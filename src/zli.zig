@@ -193,6 +193,52 @@ fn parse(self: *Zli) !void {
     self.is_parsed = true;
 }
 
+pub fn help(self: *Zli, writer: anytype) !void {
+    const program_name = try programName(self.alloc);
+    defer self.alloc.free(program_name);
+
+    try writer.print("USAGE: {s}", .{program_name});
+    if (self.options.count() > 0) {
+        try writer.print(" [OPTIONS]", .{});
+    }
+    var argument_iter = self.arguments.iterator();
+    while (argument_iter.next()) |arg| {
+        try writer.print(" <{s}>", .{arg.value_ptr.name});
+    }
+    try writer.print("\n", .{});
+
+    if (self.arguments.count() > 0) {
+        try writer.print("\n", .{});
+        try writer.print("ARGUMENTS:\n", .{});
+
+        argument_iter = self.arguments.iterator();
+        while (argument_iter.next()) |arg| {
+            try writer.print("    {s: <20}", .{arg.value_ptr.name});
+            if (arg.value_ptr.description) |desc| {
+                try writer.print("{s}", .{desc});
+            }
+            try writer.print("\n", .{});
+        }
+    }
+
+    if (self.options.count() > 0) {
+        try writer.print("\n", .{});
+        try writer.print("OPTIONS:\n", .{});
+        var option_iter = self.options.iterator();
+        while (option_iter.next()) |opt| {
+            if (opt.value_ptr.short) |s| {
+                try writer.print("    --{s}, -{c: <11}", .{ opt.value_ptr.long, s });
+            } else {
+                try writer.print("    --{s: <18}", .{opt.value_ptr.long});
+            }
+            if (opt.value_ptr.description) |desc| {
+                try writer.print("{s}", .{desc});
+            }
+            try writer.print("\n", .{});
+        }
+    }
+}
+
 const Option = struct {
     long: []const u8,
     short: ?u8,
@@ -234,4 +280,10 @@ fn getValueAs(raw_value: ?[]const u8, comptime T: type) !?T {
     }
 
     return Error.UnsupportedType;
+}
+
+fn programName(alloc: Allocator) ![]const u8 {
+    const path = try std.fs.selfExePathAlloc(alloc);
+    defer alloc.free(path);
+    return try alloc.dupe(u8, std.fs.path.basename(path));
 }
