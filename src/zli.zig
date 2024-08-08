@@ -10,8 +10,12 @@ const Error = error{
     IllegalShortName,
     UnsupportedType,
     NoOptionValue,
+    ArgumentAlreadyExists,
+    UnrecognizedArgument,
 };
 
+arguments: std.StringHashMap(Argument),
+arg_positions: std.AutoHashMap(u32, []const u8),
 options: std.StringHashMap(Option),
 short_options: std.AutoHashMap(u8, []const u8),
 alloc: Allocator,
@@ -19,6 +23,8 @@ is_parsed: bool,
 
 pub fn init(alloc: Allocator) Zli {
     return .{
+        .arguments = std.StringHashMap(Argument).init(alloc),
+        .arg_positions = std.AutoHashMap(u32, []const u8).init(alloc),
         .options = std.StringHashMap(Option).init(alloc),
         .short_options = std.AutoHashMap(u8, []const u8).init(alloc),
         .alloc = alloc,
@@ -27,6 +33,8 @@ pub fn init(alloc: Allocator) Zli {
 }
 
 pub fn deinit(self: *Zli) void {
+    self.arguments.deinit();
+    self.arg_positions.deinit();
     self.options.deinit();
     self.short_options.deinit();
 }
@@ -71,10 +79,43 @@ pub fn option(self: *Zli, comptime T: type, long: []const u8) !?T {
     }
 
     if (self.options.get(long)) |option_value| {
-        return option_value.getValueAs(T);
+        return getValueAs(option_value.value, T);
     }
 
     return Error.UnrecognizedOption;
+}
+
+pub fn addArgument(self: *Zli, comptime name: []const u8, comptime description: ?[]const u8) !void {
+    const result = try self.arguments.getOrPut(name);
+
+    if (result.found_existing) {
+        return Error.ArgumentAlreadyExists;
+    }
+
+    const arg_count = self.arg_positions.count();
+    self.arg_positions.put(arg_count, name);
+
+    result.value_ptr.* = .{
+        .name = name,
+        .description = description,
+        .value = null,
+    };
+}
+
+pub fn argumentRaw(self: *Zli, comptime name: []const u8) ?[]const u8 {
+    return self.argument([]const u8, name) catch unreachable;
+}
+
+pub fn argument(self: *Zli, comptime T: type, comptime name: []const u8) !?T {
+    if (!self.is_parsed) {
+        try self.parse();
+    }
+
+    if (self.arguments.get(name)) |arg| {
+        return getValueAs(arg.value, T);
+    }
+
+    return Error.UnrecognizedArgument;
 }
 
 fn parse(self: *Zli) !void {
@@ -86,9 +127,9 @@ fn parse(self: *Zli) !void {
     defer arg_iter.deinit();
 
     var last_key: ?[]const u8 = null;
-    while (arg_iter.next()) |argument| {
-        if (std.mem.startsWith(u8, argument, "--")) {
-            const arg = argument[2..];
+    while (arg_iter.next()) |arg_raw| {
+        if (std.mem.startsWith(u8, arg_raw, "--")) {
+            const arg = arg_raw[2..];
             const key = key: {
                 if (std.mem.containsAtLeast(u8, arg, 1, "=")) {
                     var iter = std.mem.splitAny(u8, arg, "=");
@@ -111,8 +152,8 @@ fn parse(self: *Zli) !void {
             }
             option_ptr.?.value = value;
             last_key = key;
-        } else if (std.mem.startsWith(u8, argument, "-") and last_key == null) {
-            const short_names = argument[1..];
+        } else if (std.mem.startsWith(u8, arg_raw, "-") and last_key == null) {
+            const short_names = arg_raw[1..];
             for (short_names) |s| {
                 const long_name = self.short_options.get(s);
                 if (long_name == null) {
@@ -127,7 +168,7 @@ fn parse(self: *Zli) !void {
             last_key = null;
         } else if (last_key) |key| {
             const option_ptr = self.options.getPtr(key);
-            option_ptr.?.value = argument;
+            option_ptr.?.value = arg_raw;
             last_key = null;
         }
     }
@@ -140,34 +181,40 @@ const Option = struct {
     short: ?u8,
     description: ?[]const u8,
     value: ?[]const u8,
-
-    fn getValueAs(self: Option, comptime T: type) !?T {
-        if (self.value == null) {
-            return null;
-        }
-
-        const value = self.value.?;
-        if (T == bool) {
-            return true;
-        }
-
-        // Everything besides flags should have values
-        if (value.len == 0) {
-            return Error.NoOptionValue;
-        }
-
-        if (T == []const u8) {
-            return value;
-        }
-
-        if (@typeInfo(T) == .Int) {
-            return try std.fmt.parseInt(T, value, 10);
-        }
-
-        if (@typeInfo(T) == .Float) {
-            return try std.fmt.parseFloat(T, value);
-        }
-
-        return Error.UnsupportedType;
-    }
 };
+
+const Argument = struct {
+    name: []const u8,
+    description: ?[]const u8,
+    value: ?[]const u8,
+};
+
+fn getValueAs(raw_value: ?[]const u8, comptime T: type) !?T {
+    if (raw_value == null) {
+        return null;
+    }
+
+    const value = raw_value.?;
+    if (T == bool) {
+        return true;
+    }
+
+    // Everything besides flags should have values
+    if (value.len == 0) {
+        return Error.NoOptionValue;
+    }
+
+    if (T == []const u8) {
+        return value;
+    }
+
+    if (@typeInfo(T) == .Int) {
+        return try std.fmt.parseInt(T, value, 10);
+    }
+
+    if (@typeInfo(T) == .Float) {
+        return try std.fmt.parseFloat(T, value);
+    }
+
+    return Error.UnsupportedType;
+}
