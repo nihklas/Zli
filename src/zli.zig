@@ -12,6 +12,8 @@ const Error = error{
     NoOptionValue,
     ArgumentAlreadyExists,
     UnrecognizedArgument,
+    TooManyArguments,
+    TooFewArguments,
 };
 
 arguments: std.StringHashMap(Argument),
@@ -93,7 +95,7 @@ pub fn addArgument(self: *Zli, comptime name: []const u8, comptime description: 
     }
 
     const arg_count = self.arg_positions.count();
-    self.arg_positions.put(arg_count, name);
+    try self.arg_positions.put(arg_count, name);
 
     result.value_ptr.* = .{
         .name = name,
@@ -106,16 +108,16 @@ pub fn argumentRaw(self: *Zli, comptime name: []const u8) ?[]const u8 {
     return self.argument([]const u8, name) catch unreachable;
 }
 
-pub fn argument(self: *Zli, comptime T: type, comptime name: []const u8) !?T {
+pub fn argument(self: *Zli, comptime T: type, comptime name: []const u8) !T {
     if (!self.is_parsed) {
         try self.parse();
     }
 
     if (self.arguments.get(name)) |arg| {
-        return getValueAs(arg.value, T);
+        return try getValueAs(arg.value, T) orelse unreachable;
     }
 
-    return Error.UnrecognizedArgument;
+    unreachable;
 }
 
 fn parse(self: *Zli) !void {
@@ -125,8 +127,10 @@ fn parse(self: *Zli) !void {
 
     var arg_iter = try std.process.argsWithAllocator(self.alloc);
     defer arg_iter.deinit();
+    _ = arg_iter.skip(); // Skip program name
 
     var last_key: ?[]const u8 = null;
+    var found_args: u32 = 0;
     while (arg_iter.next()) |arg_raw| {
         if (std.mem.startsWith(u8, arg_raw, "--")) {
             const arg = arg_raw[2..];
@@ -141,8 +145,10 @@ fn parse(self: *Zli) !void {
                 if (std.mem.containsAtLeast(u8, arg, 1, "=")) {
                     var iter = std.mem.splitAny(u8, arg, "=");
                     _ = iter.next();
+                    last_key = null;
                     break :value iter.next() orelse return Error.NoOptionValue;
                 }
+                last_key = key;
                 break :value "";
             };
 
@@ -151,7 +157,6 @@ fn parse(self: *Zli) !void {
                 return Error.UnrecognizedOption;
             }
             option_ptr.?.value = value;
-            last_key = key;
         } else if (std.mem.startsWith(u8, arg_raw, "-") and last_key == null) {
             const short_names = arg_raw[1..];
             for (short_names) |s| {
@@ -170,7 +175,19 @@ fn parse(self: *Zli) !void {
             const option_ptr = self.options.getPtr(key);
             option_ptr.?.value = arg_raw;
             last_key = null;
+        } else {
+            if (self.arg_positions.get(found_args)) |arg_name| {
+                const arg = self.arguments.getPtr(arg_name);
+                arg.?.value = arg_raw;
+                found_args += 1;
+            } else {
+                return Error.TooManyArguments;
+            }
         }
+    }
+
+    if (found_args != self.arguments.count()) {
+        return Error.TooFewArguments;
     }
 
     self.is_parsed = true;
