@@ -5,9 +5,13 @@ pub fn main() !void {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
     defer std.debug.assert(gpa.deinit() == .ok);
     const alloc = gpa.allocator();
-
     var parser = Zli.init(alloc);
     defer parser.deinit();
+
+    run(&parser) catch try parser.help(std.io.getStdErr().writer());
+}
+
+fn run(parser: *Zli) !void {
     try parser.addOption("test", null, "Just a random test flag");
     try parser.addOption("bool", 'b', "Another Flag");
     try parser.addOption("str", null, "Put something to say here, as a string, duh");
@@ -15,11 +19,6 @@ pub fn main() !void {
 
     try parser.addArgument("name", "The name of the user, who wants to be called out");
     try parser.addArgument("lastname", "The lastname of the user, who wants to be calling");
-
-    try parser.help(std.io.getStdErr().writer());
-    if (1 == 1) {
-        return;
-    }
 
     const value = try parser.option(bool, "test") orelse false;
     const b = try parser.option(bool, "bool") orelse false;
