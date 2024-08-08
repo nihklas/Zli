@@ -4,8 +4,8 @@ pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
 
-    const lib = b.addModule("zli", .{
-        .root_source_file = b.path("src/zli.zig"),
+    const lib = b.addModule("Zli", .{
+        .root_source_file = b.path("src/Zli.zig"),
     });
 
     const exe = b.addExecutable(.{
@@ -15,7 +15,7 @@ pub fn build(b: *std.Build) void {
         .optimize = optimize,
     });
     b.installArtifact(exe);
-    exe.root_module.addImport("zli", lib);
+    exe.root_module.addImport("Zli", lib);
 
     const run_cmd = b.addRunArtifact(exe);
     run_cmd.step.dependOn(b.getInstallStep());
