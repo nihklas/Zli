@@ -14,7 +14,7 @@ pub fn main() !u8 {
     // Add Options with a long name and optionally a short, single character name and a description for the help message
     try parser.addOption("test", 't', "Just a random test flag");
     try parser.addOption("bool", 'b', "Another Flag");
-    try parser.addOption("str", 's', "Put something to say here, as a string, duh");
+    try parser.addOption("str", null, "Put something to say here, as a string, duh");
     try parser.addOption("int", 'i', "If you want a number, you can put it here");
     try parser.addOption("help", 'h', "Print this help message");
     try parser.addOption("long-name", 'l', "Just some longer message to test out the help printing");

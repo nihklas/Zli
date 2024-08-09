@@ -242,7 +242,7 @@ pub fn help(self: *Zli, writer: anytype, return_code: u8) !u8 {
                 }
             } else {
                 try writer.print("    --{s}", .{opt.value_ptr.long});
-                for (0..(22 - opt.value_ptr.long.len)) |_| {
+                for (0..(23 - opt.value_ptr.long.len)) |_| {
                     try writer.print(" ", .{});
                 }
             }
