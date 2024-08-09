@@ -29,3 +29,5 @@ After that, add this to your build.zig
 const zli = b.dependency("zli", .{ .target = target, .optimize = optimize });
 exe.root_module.addImport("Zli", zli.module("Zli"));
 ```
+
+To update the version, just run the `zig fetch`-command again
