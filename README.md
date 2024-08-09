@@ -13,8 +13,8 @@ will not make any promises on when or if i get to the issue.
 # Features
 
 - Positional Arguments, accessable via names
-- Options with Values, supports both `--opt value` and `--opt=value`
-- Flags, long and combined short form: `--fl1 --fl2`, `-abc`
+- Options with both long and short forms, working as you would expect (`--long, -l`, `--long value, -l value`, `--long=value, -l=value`)
+- Combined short flags (`-abc`)
 - Help/Usage Text
 
 # Usage

@@ -143,47 +143,44 @@ fn parse(self: *Zli) !void {
     var last_key: ?[]const u8 = null;
     var found_args: u32 = 0;
     while (arg_iter.next()) |arg_raw| {
-        if (std.mem.startsWith(u8, arg_raw, "--")) {
-            const arg = arg_raw[2..];
-            const key = key: {
-                if (std.mem.containsAtLeast(u8, arg, 1, "=")) {
-                    var iter = std.mem.splitAny(u8, arg, "=");
-                    break :key iter.next().?;
-                }
-                break :key arg;
-            };
-            const value = value: {
-                if (std.mem.containsAtLeast(u8, arg, 1, "=")) {
-                    var iter = std.mem.splitAny(u8, arg, "=");
-                    _ = iter.next();
-                    last_key = null;
-                    break :value iter.next() orelse return Error.NoOptionValue;
-                }
-                last_key = key;
-                break :value "";
-            };
+        if (arg_raw[0] == '-') {
+            var arg: []const u8 = arg_raw[1..];
+            // first, check if there is more coming after '-'
+            if (arg.len > 0) {
+                // FIXME: There is a possible error, if somehow, someone passes '-='
+                // for now it does not matter, but maybe someday ill fix it
 
-            const option_ptr = self.options.getPtr(key);
-            if (option_ptr == null) {
-                return Error.UnrecognizedOption;
-            }
-            option_ptr.?.value = value;
-        } else if (std.mem.startsWith(u8, arg_raw, "-") and last_key == null) {
-            const short_names = arg_raw[1..];
-            for (short_names) |s| {
-                const long_name = self.short_options.get(s);
-                if (long_name == null) {
-                    return Error.UnrecognizedOption;
+                // if there is an '=' we split it first to get the value
+                // if no '=' present, default to empty string
+                const value = value: {
+                    if (std.mem.indexOf(u8, arg_raw, "=")) |split| {
+                        arg = arg_raw[1..split];
+                        break :value arg_raw[split + 1 ..];
+                    }
+                    break :value "";
+                };
+
+                if (arg[0] == '-') {
+                    const option_ptr = self.options.getPtr(arg[1..]);
+                    if (option_ptr == null) {
+                        return Error.UnrecognizedOption;
+                    }
+                    option_ptr.?.value = value;
+                } else {
+                    for (arg) |s| {
+                        const long_name = self.short_options.get(s);
+                        if (long_name == null) {
+                            return Error.UnrecognizedOption;
+                        }
+                        const option_ptr = self.options.getPtr(long_name.?);
+                        if (option_ptr == null) {
+                            return Error.UnrecognizedOption;
+                        }
+                        option_ptr.?.value = "";
+                        last_key = long_name;
+                    }
+                    self.options.getPtr(last_key.?).?.value = value;
                 }
-                const option_ptr = self.options.getPtr(long_name.?);
-                if (option_ptr == null) {
-                    return Error.UnrecognizedOption;
-                }
-                option_ptr.?.value = "";
-                last_key = long_name;
-            }
-            if (short_names.len != 1) {
-                last_key = null;
             }
         } else if (last_key) |key| {
             const option_ptr = self.options.getPtr(key);
