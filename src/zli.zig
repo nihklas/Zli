@@ -3,7 +3,7 @@ const Allocator = std.mem.Allocator;
 
 const Zli = @This();
 
-const Error = error{
+pub const Error = error{
     UnrecognizedOption,
     OptionAlreadyExists,
     ShortOptionAlreadyExists,
@@ -14,6 +14,8 @@ const Error = error{
     UnrecognizedArgument,
     TooManyArguments,
     TooFewArguments,
+    NotParsedYet,
+    ArgumentMissing,
 };
 
 arguments: std.StringHashMap(Argument),
@@ -23,6 +25,8 @@ short_options: std.AutoHashMap(u8, []const u8),
 alloc: Allocator,
 is_parsed: bool,
 
+/// Create a new Zli Parser
+/// Call `.deinit()` after usage
 pub fn init(alloc: Allocator) Zli {
     return .{
         .arguments = std.StringHashMap(Argument).init(alloc),
@@ -34,13 +38,17 @@ pub fn init(alloc: Allocator) Zli {
     };
 }
 
+/// Calls `.deinit()` on every backing hashmap and sets itself to undefined. Usage after this is not safe
 pub fn deinit(self: *Zli) void {
     self.arguments.deinit();
     self.arg_positions.deinit();
     self.options.deinit();
     self.short_options.deinit();
+    self.* = undefined;
 }
 
+/// Add an Option to the parsers list of available options. `long` will be the key to access it later, everything else is optional.
+/// Description will be printed in the generated help message
 pub fn addOption(self: *Zli, comptime long: []const u8, comptime short: ?u8, comptime description: ?[]const u8) !void {
     comptime if (short) |s| {
         if (!std.ascii.isAlphabetic(s)) {
@@ -71,11 +79,12 @@ pub fn addOption(self: *Zli, comptime long: []const u8, comptime short: ?u8, com
     };
 }
 
-pub fn optionRaw(self: *Zli, long: []const u8) ?[]const u8 {
-    return self.option([]const u8, long) catch unreachable;
-}
-
-pub fn option(self: *Zli, comptime T: type, long: []const u8) !?T {
+/// Access an option. The passed type will be used to cast/parse the raw value into.
+/// If `T` is a bool, the returned value will be either true or false, only checking for the presence of the flag and ignoring
+/// any value.
+/// If `T` is any other type, it will return an optional value, depending on the existence of the flag and a value.
+/// If the option is present, but without a value, this function will return Error.NoOptionValue.
+pub fn option(self: *Zli, comptime T: type, long: []const u8) !(if (T == bool) bool else ?T) {
     if (!self.is_parsed) {
         try self.parse();
     }
@@ -87,6 +96,9 @@ pub fn option(self: *Zli, comptime T: type, long: []const u8) !?T {
     return Error.UnrecognizedOption;
 }
 
+/// Add an Argument to the parsers list of positional arguments. `name` will be the key to access it later.
+/// Description will be printed in the generated help message
+/// The Order in which this gets called dictates the expected order of arguments when parsing
 pub fn addArgument(self: *Zli, comptime name: []const u8, comptime description: ?[]const u8) !void {
     const result = try self.arguments.getOrPut(name);
 
@@ -104,17 +116,16 @@ pub fn addArgument(self: *Zli, comptime name: []const u8, comptime description: 
     };
 }
 
-pub fn argumentRaw(self: *Zli, comptime name: []const u8) ?[]const u8 {
-    return self.argument([]const u8, name) catch unreachable;
-}
-
+/// Access an argument. The passed type will be used to cast/parse the raw value into.
+/// Arguments are required by default. So to make one optional, you have to catch Error.ArgumentMissing.
+/// Note that this will only work on the trailing arguments
 pub fn argument(self: *Zli, comptime T: type, comptime name: []const u8) !T {
     if (!self.is_parsed) {
         try self.parse();
     }
 
     if (self.arguments.get(name)) |arg| {
-        return try getValueAs(arg.value, T) orelse unreachable;
+        return try getValueAs(arg.value, T) orelse return Error.ArgumentMissing;
     }
 
     unreachable;
@@ -169,8 +180,11 @@ fn parse(self: *Zli) !void {
                     return Error.UnrecognizedOption;
                 }
                 option_ptr.?.value = "";
+                last_key = long_name;
             }
-            last_key = null;
+            if (short_names.len != 1) {
+                last_key = null;
+            }
         } else if (last_key) |key| {
             const option_ptr = self.options.getPtr(key);
             option_ptr.?.value = arg_raw;
@@ -180,20 +194,18 @@ fn parse(self: *Zli) !void {
                 const arg = self.arguments.getPtr(arg_name);
                 arg.?.value = arg_raw;
                 found_args += 1;
-            } else {
-                return Error.TooManyArguments;
             }
         }
-    }
-
-    if (found_args != self.arguments.count()) {
-        return Error.TooFewArguments;
     }
 
     self.is_parsed = true;
 }
 
-pub fn help(self: *Zli, writer: anytype) !void {
+/// Print a help message using all registered options and arguments
+/// This will only print options and arguments registered before help() is called
+/// Takes in a Writer
+/// The passed return code is passed right back to allow one-liners on missing argument catches to return with the corrent exit code
+pub fn help(self: *Zli, writer: anytype, return_code: u8) !u8 {
     const program_name = try programName(self.alloc);
     defer self.alloc.free(program_name);
 
@@ -213,7 +225,7 @@ pub fn help(self: *Zli, writer: anytype) !void {
 
         argument_iter = self.arguments.iterator();
         while (argument_iter.next()) |arg| {
-            try writer.print("    {s: <20}", .{arg.value_ptr.name});
+            try writer.print("    {s: <25}", .{arg.value_ptr.name});
             if (arg.value_ptr.description) |desc| {
                 try writer.print("{s}", .{desc});
             }
@@ -227,9 +239,15 @@ pub fn help(self: *Zli, writer: anytype) !void {
         var option_iter = self.options.iterator();
         while (option_iter.next()) |opt| {
             if (opt.value_ptr.short) |s| {
-                try writer.print("    --{s}, -{c: <11}", .{ opt.value_ptr.long, s });
+                try writer.print("    --{s}, -{c}", .{ opt.value_ptr.long, s });
+                for (0..(19 - opt.value_ptr.long.len)) |_| {
+                    try writer.print(" ", .{});
+                }
             } else {
-                try writer.print("    --{s: <18}", .{opt.value_ptr.long});
+                try writer.print("    --{s}", .{opt.value_ptr.long});
+                for (0..(22 - opt.value_ptr.long.len)) |_| {
+                    try writer.print(" ", .{});
+                }
             }
             if (opt.value_ptr.description) |desc| {
                 try writer.print("{s}", .{desc});
@@ -237,6 +255,8 @@ pub fn help(self: *Zli, writer: anytype) !void {
             try writer.print("\n", .{});
         }
     }
+
+    return return_code;
 }
 
 const Option = struct {
@@ -252,8 +272,11 @@ const Argument = struct {
     value: ?[]const u8,
 };
 
-fn getValueAs(raw_value: ?[]const u8, comptime T: type) !?T {
+fn getValueAs(raw_value: ?[]const u8, comptime T: type) !(if (T == bool) bool else ?T) {
     if (raw_value == null) {
+        if (T == bool) {
+            return false;
+        }
         return null;
     }
 
