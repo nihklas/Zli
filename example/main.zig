@@ -12,7 +12,7 @@ pub fn main() !u8 {
             .int = .{ .type = i32, .short = 'i', .desc = "Simple integer", .default = 0 },
         },
         .arguments = .{
-            .name = .{ .type = []const u8, .desc = "Just a name" },
+            .name = .{ .type = []u8, .pos = 1, .desc = "Just a name" },
         },
     }).init(alloc);
     defer parser.deinit();
