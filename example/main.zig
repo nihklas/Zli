@@ -8,28 +8,19 @@ pub fn main() !u8 {
 
     var parser = try zli.Parser(.{
         .options = .{
-            .bool = .{
-                .type = bool,
-                .short = 'b',
-                .desc = "Simple flag",
-                .default = false,
-            },
-            .int = .{
-                .type = i32,
-                .short = 'i',
-                .desc = "Simple integer",
-                .default = 0,
-            },
+            .bool = .{ .type = bool, .short = 'b', .desc = "Simple flag", .default = false },
+            .int = .{ .type = i32, .short = 'i', .desc = "Simple integer", .default = 0 },
+        },
+        .arguments = .{
+            .name = .{ .type = []const u8, .desc = "Just a name" },
         },
     }).init(alloc);
     defer parser.deinit();
     try parser.parse();
 
-    std.debug.print("bool: {any}\n", .{parser.options.bool});
-    std.debug.print("typeof bool: {}\n", .{@TypeOf(parser.options.bool)});
-
-    std.debug.print("int: {any}\n", .{parser.options.int});
-    std.debug.print("typeof int: {}\n", .{@TypeOf(parser.options.int)});
+    std.debug.print("flag bool: {any}\n", .{parser.options.bool});
+    std.debug.print("option int: {any}\n", .{parser.options.int});
+    std.debug.print("argument name: {any}\n", .{parser.arguments.name});
 
     return 0;
 }

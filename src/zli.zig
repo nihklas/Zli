@@ -7,20 +7,28 @@ const Error = error{
 
 pub fn Parser(def: anytype) type {
     if (!@hasField(@TypeOf(def), "options")) {
-        @compileError("No options defined");
+        @compileError("No options defined. If this command doesn't have options, pass an empty struct.");
     }
+
+    if (!@hasField(@TypeOf(def), "arguments")) {
+        @compileError("No arguments defined. If this command doesn't have arguments, pass an empty struct.");
+    }
+
     const Options = MakeOptions(def.options);
+    const Arguments = MakeArguments(def.arguments);
 
     return struct {
         const Self = @This();
 
         options: Options,
+        arguments: Arguments,
         parsed: bool,
         alloc: Allocator,
         args: std.process.ArgIterator,
 
         pub fn init(alloc: Allocator) !Self {
             return .{
+                .arguments = .{},
                 .options = .{},
                 .parsed = false,
                 .alloc = alloc,
@@ -70,22 +78,33 @@ fn MakeOptions(options: anytype) type {
         const field_type = option.type;
 
         if (@hasField(@TypeOf(option), "default")) {
-            const default_type_info = @typeInfo(@TypeOf(option.default));
-            const field_type_info = @typeInfo(field_type);
-            const can_cast = switch (default_type_info) {
-                .comptime_int => field_type_info == .int,
-                .comptime_float => field_type_info == .float,
-                else => std.mem.eql(u8, @tagName(std.meta.activeTag(field_type_info)), @tagName(std.meta.activeTag(default_type_info))),
-            };
-
-            if (!can_cast) {
-                @compileError(std.fmt.comptimePrint("Default value '{any}' is a different type than option '{s}' expects. Expected '{}' got '{}'.", .{ option.default, field.name, field_type, @TypeOf(option.default) }));
-            }
-            fields[i] = makeField(field.name, field_type, option.default);
+            fields[i] = makeField(field.name, field_type, @as(field_type, option.default));
         } else {
             const optional_type = @Type(std.builtin.Type{ .optional = .{ .child = field_type } });
             fields[i] = makeField(field.name, optional_type, null);
         }
+    }
+
+    return @Type(.{
+        .@"struct" = .{
+            .layout = .auto,
+            .fields = fields[0..],
+            .decls = &.{},
+            .is_tuple = false,
+        },
+    });
+}
+
+fn MakeArguments(arguments: anytype) type {
+    const argument_typedef = @TypeOf(arguments);
+    const argument_fields = std.meta.fields(argument_typedef);
+    var fields: [argument_fields.len]std.builtin.Type.StructField = undefined;
+
+    for (argument_fields, 0..) |field, i| {
+        const argument = @field(arguments, field.name);
+        const field_type = argument.type;
+        const optional_type = @Type(std.builtin.Type{ .optional = .{ .child = field_type } });
+        fields[i] = makeField(field.name, optional_type, null);
     }
 
     return @Type(.{
