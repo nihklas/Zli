@@ -17,9 +17,7 @@ pub fn Parser(def: anytype) type {
     const Options = MakeOptions(def.options);
     const Arguments = MakeArguments(def.arguments);
 
-    const positions = argumentPositions(def.arguments);
     const shorthands = optionShorthands(def.options);
-    _ = positions;
     _ = shorthands;
 
     return struct {
@@ -44,21 +42,44 @@ pub fn Parser(def: anytype) type {
         }
 
         pub fn deinit(self: *Self) void {
+            self.alloc.free(self.extra_args);
             self.args.deinit();
             self.* = undefined;
         }
 
         pub fn parse(self: *Self) !void {
             _ = self.args.skip(); // Skip program name
-            var current_argument: usize = 0;
-            current_argument += 0;
+            var current_argument: usize = 1;
+            var extra_args = std.ArrayList([]const u8).init(self.alloc);
+            defer extra_args.deinit();
+
             while (self.args.next()) |arg| {
                 // '--' -> long option
                 // else '-' -> short option(s)
-                // else -> argument
+                // else -> argument / done
 
-                _ = try self.setArgument(current_argument, arg);
+                if (std.mem.startsWith(u8, arg, "--")) {
+                    // TODO:
+                    // handle boolean flag
+                    // handle splitting on =
+                    // handle next arg if value expected
+                    continue;
+                }
+
+                if (arg[0] == '-') {
+                    // TODO:
+                    continue;
+                }
+
+                self.setArgument(current_argument, arg) catch |err| switch (err) {
+                    error.IndexOutOfBounds => try extra_args.append(arg),
+                    else => return err,
+                };
+                current_argument += 1;
             }
+
+            self.extra_args = try extra_args.toOwnedSlice();
+
             self.parsed = true;
         }
 
@@ -74,10 +95,25 @@ pub fn Parser(def: anytype) type {
         }
 
         fn setArgument(self: *Self, index: usize, value: []const u8) error{ TypeError, IndexOutOfBounds }!void {
-            _ = self;
-            _ = index;
-            _ = value;
-            // TODO:
+            const fields = std.meta.fields(Arguments);
+
+            if (index > fields.len) {
+                return error.IndexOutOfBounds;
+            }
+
+            inline for (fields) |field| {
+                const argument_def = @field(def.arguments, field.name);
+                if (argument_def.pos == index) {
+                    const converted = switch (@typeInfo(argument_def.type)) {
+                        .int => std.fmt.parseInt(argument_def.type, value, 0) catch return .TypeError,
+                        .pointer => value,
+                        else => unreachable,
+                    };
+
+                    @field(self.arguments, field.name) = converted;
+                    return;
+                }
+            }
         }
     };
 }
@@ -92,7 +128,7 @@ fn MakeOptions(options: anytype) type {
         const field_type = option.type;
 
         if (!isAllowedType(@typeInfo(field_type))) {
-            @compileError(std.fmt.comptimePrint("Type of option '{s}' must be one of {{ bool, int, float, []const u8 }}", .{field.name}));
+            @compileError(std.fmt.comptimePrint("Type of option '{s}' must be one of {{ bool, int, float, []const u8 }}, found: '{}'", .{ field.name, field_type }));
         }
 
         if (@hasField(@TypeOf(option), "default")) {
@@ -123,7 +159,7 @@ fn MakeArguments(arguments: anytype) type {
         const field_type = argument.type;
 
         if (!isAllowedType(@typeInfo(field_type))) {
-            @compileError(std.fmt.comptimePrint("Type of argument '{s}' must be one of {{ bool, int, float, []const u8 }}", .{field.name}));
+            @compileError(std.fmt.comptimePrint("Type of argument '{s}' must be one of {{ bool, int, float, []const u8 }}, found: '{}'", .{ field.name, field_type }));
         }
 
         const optional_type = @Type(std.builtin.Type{ .optional = .{ .child = field_type } });
@@ -145,7 +181,7 @@ fn isAllowedType(check: std.builtin.Type) bool {
 }
 
 fn isString(check: std.builtin.Type) bool {
-    return check == .pointer and check.pointer.size == .Slice and check.pointer.child == u8;
+    return check == .pointer and check.pointer.size == .Slice and check.pointer.child == u8 and check.pointer.is_const;
 }
 
 fn makeField(name: [:0]const u8, field_type: type, default: field_type) std.builtin.Type.StructField {
@@ -156,29 +192,6 @@ fn makeField(name: [:0]const u8, field_type: type, default: field_type) std.buil
         .is_comptime = false,
         .alignment = @alignOf(field_type),
     };
-}
-
-fn argumentPositions(arguments: anytype) [][]const u8 {
-    const argument_typedef = @TypeOf(arguments);
-    const argument_fields = std.meta.fields(argument_typedef);
-
-    var positions: [argument_fields.len][]const u8 = .{""} ** argument_fields.len;
-
-    for (argument_fields) |field| {
-        const argument = @field(arguments, field.name);
-        if (!@hasField(@TypeOf(argument), "pos")) {
-            @compileError("Arguments need to specify there position");
-        }
-
-        const index = argument.pos - 1;
-        if (positions[index].len != 0) {
-            @compileError("Positions cannot be redeclared");
-        }
-
-        positions[index] = field.name;
-    }
-
-    return positions[0..];
 }
 
 fn optionShorthands(options: anytype) std.StaticStringMap([]const u8) {
