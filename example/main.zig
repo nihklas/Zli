@@ -11,10 +11,23 @@ pub fn main() !u8 {
             .type = bool,
             .short = 'b',
             .desc = "Simple flag",
+            .default = false,
+        },
+        .int = .{
+            .type = i32,
+            .short = 'i',
+            .desc = "Simple integer",
+            .default = 0,
         },
     }).init(alloc);
+    defer parser.deinit();
+    try parser.parse();
 
-    _ = parser.option("bool");
+    std.debug.print("bool: {any}\n", .{parser.options.bool});
+    std.debug.print("typeof bool: {}\n", .{@TypeOf(parser.options.bool)});
+
+    std.debug.print("int: {any}\n", .{parser.options.int});
+    std.debug.print("typeof int: {}\n", .{@TypeOf(parser.options.int)});
 
     return 0;
 }

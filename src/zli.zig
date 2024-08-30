@@ -1,6 +1,10 @@
 const std = @import("std");
 const Allocator = std.mem.Allocator;
 
+const Error = error{
+    UnrecognizedOption,
+};
+
 pub fn Parser(options: anytype) type {
     const Options = MakeOptions(options);
 
@@ -10,40 +14,44 @@ pub fn Parser(options: anytype) type {
         options: Options,
         parsed: bool,
         alloc: Allocator,
-        args: []const [:0]u8 = undefined,
+        args: std.process.ArgIterator,
 
         pub fn init(alloc: Allocator) !Self {
             return .{
                 .options = .{},
                 .parsed = false,
                 .alloc = alloc,
-                .args = try std.process.argsAlloc(alloc),
+                .args = try std.process.argsWithAllocator(alloc),
             };
         }
 
         pub fn parse(self: *Self) !void {
-            _ = self;
+            _ = self.args.skip(); // Skip program name
+            while (self.args.next()) |arg| {
+                if (std.mem.startsWith(u8, arg, "--")) {
+                    const arg_name = arg[2..];
+                    if (!self.setOption(arg_name, true)) {
+                        return Error.UnrecognizedOption;
+                    }
+                }
+            }
+            self.parsed = true;
         }
 
         pub fn deinit(self: *Self) void {
-            std.process.argsFree(self.alloc, self.args);
+            self.args.deinit();
             self.* = undefined;
         }
 
-        pub fn option(self: *Self, comptime name: []const u8) getOptionType(name) {
-            return @field(self.options, name);
-        }
-
-        fn getOptionType(comptime name: []const u8) type {
-            const fields = @typeInfo(Options).@"struct".fields;
-
-            for (fields) |field| {
+        fn setOption(self: *Self, name: []const u8, value: anytype) bool {
+            inline for (std.meta.fields(Options)) |field| {
                 if (std.mem.eql(u8, field.name, name)) {
-                    return field.type;
+                    @field(self.options, field.name) = value;
+                    return true;
                 }
             }
 
-            @compileError(std.fmt.comptimePrint("{s} is not an option", .{name}));
+            return false;
         }
     };
 }
@@ -54,14 +62,18 @@ fn MakeOptions(options: anytype) type {
     var fields: [option_fields.len]std.builtin.Type.StructField = undefined;
 
     for (option_fields, 0..) |field, i| {
-        const optional_type = @Type(std.builtin.Type{ .optional = .{ .child = field.type } });
-        fields[i] = .{
-            .name = field.name,
-            .type = optional_type,
-            .default_value = &@as(?field.type, null),
-            .is_comptime = false,
-            .alignment = @alignOf(optional_type),
-        };
+        const option = @field(options, field.name);
+        const field_type = option.type;
+
+        if (@hasField(@TypeOf(option), "default")) {
+            if (@TypeOf(option.default) != field_type) {
+                @compileError(std.fmt.comptimePrint("Default value '{any}' is a different type than option '{s}' expects", .{ option.default, field.name }));
+            }
+            fields[i] = makeField(field.name, field_type, option.default);
+        } else {
+            const optional_type = @Type(std.builtin.Type{ .optional = .{ .child = field_type } });
+            fields[i] = makeField(field.name, optional_type, null);
+        }
     }
 
     return @Type(.{
@@ -72,4 +84,14 @@ fn MakeOptions(options: anytype) type {
             .is_tuple = false,
         },
     });
+}
+
+fn makeField(name: [:0]const u8, field_type: type, default: field_type) std.builtin.Type.StructField {
+    return .{
+        .name = name,
+        .type = field_type,
+        .default_value = &@as(field_type, default),
+        .is_comptime = false,
+        .alignment = @alignOf(field_type),
+    };
 }
