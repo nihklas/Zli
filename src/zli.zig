@@ -30,9 +30,10 @@ pub fn Parser(options: anytype) type {
             while (self.args.next()) |arg| {
                 if (std.mem.startsWith(u8, arg, "--")) {
                     const arg_name = arg[2..];
-                    if (!self.setOption(arg_name, true)) {
-                        return Error.UnrecognizedOption;
-                    }
+                    std.debug.print("arg: {s}\n", .{arg_name});
+                    // if (!self.setOption(arg_name, true)) {
+                    //     return Error.UnrecognizedOption;
+                    // }
                 }
             }
             self.parsed = true;
@@ -66,8 +67,16 @@ fn MakeOptions(options: anytype) type {
         const field_type = option.type;
 
         if (@hasField(@TypeOf(option), "default")) {
-            if (@TypeOf(option.default) != field_type) {
-                @compileError(std.fmt.comptimePrint("Default value '{any}' is a different type than option '{s}' expects", .{ option.default, field.name }));
+            const default_type_info = @typeInfo(@TypeOf(option.default));
+            const field_type_info = @typeInfo(field_type);
+            const can_cast = switch (default_type_info) {
+                .comptime_int => field_type_info == .int,
+                .comptime_float => field_type_info == .float,
+                else => std.mem.eql(u8, @tagName(std.meta.activeTag(field_type_info)), @tagName(std.meta.activeTag(default_type_info))),
+            };
+
+            if (!can_cast) {
+                @compileError(std.fmt.comptimePrint("Default value '{any}' is a different type than option '{s}' expects. Expected '{}' got '{}'.", .{ option.default, field.name, field_type, @TypeOf(option.default) }));
             }
             fields[i] = makeField(field.name, field_type, option.default);
         } else {
