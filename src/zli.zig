@@ -42,7 +42,9 @@ pub fn Parser(def: anytype) type {
         }
 
         pub fn deinit(self: *Self) void {
-            self.alloc.free(self.extra_args);
+            if (self.parsed) {
+                self.alloc.free(self.extra_args);
+            }
             self.args.deinit();
             self.* = undefined;
         }
@@ -105,7 +107,8 @@ pub fn Parser(def: anytype) type {
                 const argument_def = @field(def.arguments, field.name);
                 if (argument_def.pos == index) {
                     const converted = switch (@typeInfo(argument_def.type)) {
-                        .int => std.fmt.parseInt(argument_def.type, value, 0) catch return .TypeError,
+                        .int => std.fmt.parseInt(argument_def.type, value, 0) catch return error.TypeError,
+                        .float => std.fmt.parseFloat(argument_def.type, value) catch return error.TypeError,
                         .pointer => value,
                         else => unreachable,
                     };
