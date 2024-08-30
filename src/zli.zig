@@ -5,8 +5,8 @@ const Error = error{
     UnrecognizedOption,
 };
 
-pub fn Parser(options: anytype) type {
-    const Options = MakeOptions(options);
+pub fn Parser(def: anytype) type {
+    const Options = if (@hasField(@TypeOf(def), "options")) MakeOptions(def.options) else struct {};
 
     return struct {
         const Self = @This();

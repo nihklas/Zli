@@ -7,17 +7,19 @@ pub fn main() !u8 {
     const alloc = gpa.allocator();
 
     var parser = try zli.Parser(.{
-        .bool = .{
-            .type = bool,
-            .short = 'b',
-            .desc = "Simple flag",
-            .default = false,
-        },
-        .int = .{
-            .type = i32,
-            .short = 'i',
-            .desc = "Simple integer",
-            .default = 0,
+        .options = .{
+            .bool = .{
+                .type = bool,
+                .short = 'b',
+                .desc = "Simple flag",
+                .default = false,
+            },
+            .int = .{
+                .type = i32,
+                .short = 'i',
+                .desc = "Simple integer",
+                .default = 0,
+            },
         },
     }).init(alloc);
     defer parser.deinit();
