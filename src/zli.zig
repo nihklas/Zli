@@ -6,7 +6,10 @@ const Error = error{
 };
 
 pub fn Parser(def: anytype) type {
-    const Options = if (@hasField(@TypeOf(def), "options")) MakeOptions(def.options) else struct {};
+    if (!@hasField(@TypeOf(def), "options")) {
+        @compileError("No options defined");
+    }
+    const Options = MakeOptions(def.options);
 
     return struct {
         const Self = @This();
