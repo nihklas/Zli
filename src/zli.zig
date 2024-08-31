@@ -6,10 +6,14 @@ const Error = error{
     IndexOOB,
     TypeError,
     MissingOptionName,
+    MissingOptionValue,
     NotAFlag,
 };
 
 pub fn Parser(def: anytype) type {
+    // TODO: more advanced schema check
+    // maybe even turn it into a library
+
     if (!@hasField(@TypeOf(def), "options")) {
         @compileError("No options defined. If this command doesn't have options, pass an empty struct.");
     }
@@ -29,6 +33,7 @@ pub fn Parser(def: anytype) type {
         extra_args: [][]const u8,
         alloc: Allocator,
         args: [][:0]u8,
+        current_arg: usize,
 
         pub fn init(alloc: Allocator) !Self {
             return .{
@@ -37,6 +42,7 @@ pub fn Parser(def: anytype) type {
                 .extra_args = &.{},
                 .alloc = alloc,
                 .args = try std.process.argsAlloc(alloc),
+                .current_arg = 1, // start at 1 because at 0 is program name
             };
         }
 
@@ -53,25 +59,16 @@ pub fn Parser(def: anytype) type {
             var extra_args = std.ArrayList([]const u8).init(self.alloc);
             defer extra_args.deinit();
 
-            var idx: usize = 1; // 0 = program name
-            while (idx < self.args.len) : (idx += 1) {
-                const arg = self.args[idx];
+            while (self.current_arg < self.args.len) : (self.current_arg += 1) {
+                const arg = self.args[self.current_arg];
 
                 if (std.mem.startsWith(u8, arg, "--")) {
                     if (arg.len == 2) {
                         return Error.MissingOptionName;
                     }
-                    const name = arg[2..];
-                    const value = value: {
-                        if (try isFlag(name)) {
-                            break :value "true";
-                        }
-
-                        // TODO: get real value
-                        // split on =
-                        // if no = present, check next arg
-                        break :value "test";
-                    };
+                    const equal_index = std.mem.indexOf(u8, arg, "=");
+                    const name = if (equal_index) |index| arg[2..index] else arg[2..];
+                    const value = try self.getValue(name);
                     try self.setOption(name, value);
                     continue;
                 }
@@ -80,8 +77,14 @@ pub fn Parser(def: anytype) type {
                     if (arg.len == 1) {
                         return Error.MissingOptionName;
                     }
-                    // TODO: Check for single short option with value
-                    // if(arg.len == 2) -> get long name and extract option handling out to function
+
+                    if (arg.len == 2) {
+                        const long_name = try getOptionFromShort(arg[1]);
+                        const value = try self.getValue(long_name);
+                        try self.setOption(long_name, value);
+                        continue;
+                    }
+
                     for (arg[1..]) |shorthand| {
                         const long_name = try getOptionFromShort(shorthand);
                         if (!try isFlag(long_name)) {
@@ -94,7 +97,7 @@ pub fn Parser(def: anytype) type {
                     continue;
                 }
 
-                // Everything else will likely be an argument
+                // Everything else will be interpreted as an extra argument
                 self.setArgument(current_argument, arg) catch |err| switch (err) {
                     Error.IndexOOB => try extra_args.append(arg),
                     else => return err,
@@ -103,6 +106,27 @@ pub fn Parser(def: anytype) type {
             }
 
             self.extra_args = try extra_args.toOwnedSlice();
+        }
+
+        fn getValue(self: *Self, name: []const u8) Error![]const u8 {
+            const arg = self.args[self.current_arg];
+            const equal_index = std.mem.indexOf(u8, arg, "=");
+            if (try isFlag(name)) {
+                return "true";
+            }
+
+            if (equal_index) |index| {
+                return arg[index + 1 ..];
+            }
+
+            if (self.current_arg + 1 < self.args.len) {
+                if (self.args[self.current_arg + 1][0] != '-') {
+                    self.current_arg += 1;
+                    return self.args[self.current_arg];
+                }
+            }
+
+            return Error.MissingOptionValue;
         }
 
         fn setOption(self: *Self, name: []const u8, value: []const u8) Error!void {
