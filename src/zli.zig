@@ -3,6 +3,10 @@ const Allocator = std.mem.Allocator;
 
 const Error = error{
     UnrecognizedOption,
+    IndexOOB,
+    TypeError,
+    MissingOptionName,
+    NotAFlag,
 };
 
 pub fn Parser(def: anytype) type {
@@ -17,107 +21,157 @@ pub fn Parser(def: anytype) type {
     const Options = MakeOptions(def.options);
     const Arguments = MakeArguments(def.arguments);
 
-    const shorthands = optionShorthands(def.options);
-    _ = shorthands;
-
     return struct {
         const Self = @This();
 
         options: Options,
         arguments: Arguments,
         extra_args: [][]const u8,
-        parsed: bool,
         alloc: Allocator,
-        args: std.process.ArgIterator,
+        args: [][:0]u8,
 
         pub fn init(alloc: Allocator) !Self {
             return .{
                 .arguments = .{},
                 .options = .{},
-                .extra_args = undefined,
-                .parsed = false,
+                .extra_args = &.{},
                 .alloc = alloc,
-                .args = try std.process.argsWithAllocator(alloc),
+                .args = try std.process.argsAlloc(alloc),
             };
         }
 
         pub fn deinit(self: *Self) void {
-            if (self.parsed) {
+            if (self.extra_args.len > 0) {
                 self.alloc.free(self.extra_args);
             }
-            self.args.deinit();
+            std.process.argsFree(self.alloc, self.args);
             self.* = undefined;
         }
 
         pub fn parse(self: *Self) !void {
-            _ = self.args.skip(); // Skip program name
             var current_argument: usize = 1;
             var extra_args = std.ArrayList([]const u8).init(self.alloc);
             defer extra_args.deinit();
 
-            while (self.args.next()) |arg| {
-                // '--' -> long option
-                // else '-' -> short option(s)
-                // else -> argument / done
+            var idx: usize = 1; // 0 = program name
+            while (idx < self.args.len) : (idx += 1) {
+                const arg = self.args[idx];
 
                 if (std.mem.startsWith(u8, arg, "--")) {
-                    // TODO:
-                    // handle boolean flag
-                    // handle splitting on =
-                    // handle next arg if value expected
+                    if (arg.len == 2) {
+                        return Error.MissingOptionName;
+                    }
+                    const name = arg[2..];
+                    const value = value: {
+                        if (try isFlag(name)) {
+                            break :value "true";
+                        }
+
+                        // TODO: get real value
+                        // split on =
+                        // if no = present, check next arg
+                        break :value "test";
+                    };
+                    try self.setOption(name, value);
                     continue;
                 }
 
                 if (arg[0] == '-') {
-                    // TODO:
+                    if (arg.len == 1) {
+                        return Error.MissingOptionName;
+                    }
+                    // TODO: Check for single short option with value
+                    // if(arg.len == 2) -> get long name and extract option handling out to function
+                    for (arg[1..]) |shorthand| {
+                        const long_name = try getOptionFromShort(shorthand);
+                        if (!try isFlag(long_name)) {
+                            // TODO: Move this to comptime schema check
+                            return Error.NotAFlag;
+                        }
+
+                        try self.setOption(long_name, "true");
+                    }
                     continue;
                 }
 
+                // Everything else will likely be an argument
                 self.setArgument(current_argument, arg) catch |err| switch (err) {
-                    error.IndexOutOfBounds => try extra_args.append(arg),
+                    Error.IndexOOB => try extra_args.append(arg),
                     else => return err,
                 };
                 current_argument += 1;
             }
 
             self.extra_args = try extra_args.toOwnedSlice();
-
-            self.parsed = true;
         }
 
-        fn setOption(self: *Self, name: []const u8, value: []const u8) bool {
+        fn setOption(self: *Self, name: []const u8, value: []const u8) Error!void {
             inline for (std.meta.fields(Options)) |field| {
+                const option_def = @field(def.options, field.name);
                 if (std.mem.eql(u8, field.name, name)) {
-                    @field(self.options, field.name) = value;
-                    return true;
+                    @field(self.options, field.name) = try convertValue(option_def.type, value);
+                    return;
                 }
             }
 
-            return false;
+            return Error.UnrecognizedOption;
         }
 
-        fn setArgument(self: *Self, index: usize, value: []const u8) error{ TypeError, IndexOutOfBounds }!void {
+        fn isFlag(name: []const u8) Error!bool {
+            inline for (std.meta.fields(Options)) |field| {
+                const option_def = @field(def.options, field.name);
+                if (std.mem.eql(u8, field.name, name)) {
+                    return option_def.type == bool;
+                }
+            }
+
+            return Error.UnrecognizedOption;
+        }
+
+        fn getOptionFromShort(shorthand: u8) Error![]const u8 {
+            inline for (std.meta.fields(@TypeOf(def.options))) |option| {
+                const option_def = @field(def.options, option.name);
+                if (!@hasField(@TypeOf(option_def), "short")) {
+                    continue;
+                }
+
+                if (option_def.short == shorthand) {
+                    return option.name;
+                }
+            }
+
+            return Error.UnrecognizedOption;
+        }
+
+        fn optionExists(name: []const u8) bool {
+            return @hasField(Options, name);
+        }
+
+        fn setArgument(self: *Self, index: usize, value: []const u8) Error!void {
             const fields = std.meta.fields(Arguments);
 
             if (index > fields.len) {
-                return error.IndexOutOfBounds;
+                return Error.IndexOOB;
             }
 
             inline for (fields) |field| {
                 const argument_def = @field(def.arguments, field.name);
                 if (argument_def.pos == index) {
-                    const converted = switch (@typeInfo(argument_def.type)) {
-                        .int => std.fmt.parseInt(argument_def.type, value, 0) catch return error.TypeError,
-                        .float => std.fmt.parseFloat(argument_def.type, value) catch return error.TypeError,
-                        .pointer => value,
-                        else => unreachable,
-                    };
-
-                    @field(self.arguments, field.name) = converted;
+                    @field(self.arguments, field.name) = try convertValue(argument_def.type, value);
                     return;
                 }
             }
         }
+    };
+}
+
+fn convertValue(target: type, value: []const u8) Error!target {
+    return switch (@typeInfo(target)) {
+        .int => std.fmt.parseInt(target, value, 0) catch return Error.TypeError,
+        .float => std.fmt.parseFloat(target, value) catch return Error.TypeError,
+        .bool => value.len > 0,
+        .pointer => value,
+        else => unreachable,
     };
 }
 
@@ -195,23 +249,4 @@ fn makeField(name: [:0]const u8, field_type: type, default: field_type) std.buil
         .is_comptime = false,
         .alignment = @alignOf(field_type),
     };
-}
-
-fn optionShorthands(options: anytype) std.StaticStringMap([]const u8) {
-    const option_typedef = @TypeOf(options);
-    const option_fields = std.meta.fields(option_typedef);
-    var shorthands: [option_fields.len]std.meta.Tuple(&.{ []const u8, []const u8 }) = undefined;
-
-    var shorts_count: usize = 0;
-    for (option_fields) |field| {
-        const option = @field(options, field.name);
-        if (!@hasField(@TypeOf(option), "short")) {
-            continue;
-        }
-
-        shorthands[shorts_count] = .{ &[1]u8{option.short}, field.name };
-        shorts_count += 1;
-    }
-
-    return std.StaticStringMap([]const u8).initComptime(shorthands[0..shorts_count]);
 }

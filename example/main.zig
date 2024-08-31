@@ -9,6 +9,7 @@ pub fn main() !u8 {
     var parser = try zli.Parser(.{
         .options = .{
             .bool = .{ .type = bool, .short = 'b', .desc = "Simple flag", .default = false },
+            .a = .{ .type = bool, .short = 'a', .default = false },
             .int = .{ .type = i32, .short = 'i', .desc = "Simple integer", .default = 0 },
         },
         .arguments = .{
@@ -20,6 +21,7 @@ pub fn main() !u8 {
     try parser.parse();
 
     std.debug.print("flag bool: {any}\n", .{parser.options.bool});
+    std.debug.print("flag a: {any}\n", .{parser.options.a});
     std.debug.print("option int: {any}\n", .{parser.options.int});
     std.debug.print("argument name: {?s}\n", .{parser.arguments.name});
     std.debug.print("argument age: {any}\n", .{parser.arguments.age});
