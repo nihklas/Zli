@@ -33,5 +33,7 @@ pub fn main() !u8 {
     std.debug.print("argument age: {any}\n", .{parser.arguments.age});
     std.debug.print("extra args: {s}\n", .{parser.extra_args});
 
+    // TODO: Make better examples with explaining comments
+
     return 0;
 }
