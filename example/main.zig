@@ -11,14 +11,20 @@ pub fn main() !u8 {
             .bool = .{ .type = bool, .short = 'b', .desc = "Simple flag", .default = false },
             .a = .{ .type = bool, .short = 'a', .default = false },
             .int = .{ .type = i32, .short = 'i', .desc = "Simple integer", .default = 0 },
+            .help = .{ .type = bool, .short = 'h', .default = false },
         },
         .arguments = .{
-            .name = .{ .type = []const u8, .pos = 1, .desc = "Just a name" },
-            .age = .{ .type = u8, .pos = 2, .desc = "Put in your age" },
+            .name = .{ .type = []const u8, .pos = 2, .desc = "Just a name" },
+            .age = .{ .type = u8, .pos = 1, .desc = "Put in your age" },
         },
     }).init(alloc);
     defer parser.deinit();
     try parser.parse();
+
+    if (parser.options.help) {
+        try parser.help(std.io.getStdOut().writer());
+        return 0;
+    }
 
     std.debug.print("flag bool: {any}\n", .{parser.options.bool});
     std.debug.print("flag a: {any}\n", .{parser.options.a});

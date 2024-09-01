@@ -88,10 +88,8 @@ pub fn Parser(def: anytype) type {
                     for (arg[1..]) |shorthand| {
                         const long_name = try getOptionFromShort(shorthand);
                         if (!try isFlag(long_name)) {
-                            // TODO: Move this to comptime schema check
-                            return Error.NotAFlag;
+                            return Error.NotAFlag; // Combining multiple shorthands can is only possible for flags
                         }
-
                         try self.setOption(long_name, "true");
                     }
                     continue;
@@ -186,6 +184,63 @@ pub fn Parser(def: anytype) type {
                 }
             }
         }
+
+        pub fn help(self: *Self, writer: anytype) !void {
+            const program_name = try programName(self.alloc);
+            defer self.alloc.free(program_name);
+
+            const options = std.meta.fields(Options);
+            const arguments = std.meta.fields(Arguments);
+
+            try writer.print("USAGE: {s}", .{program_name});
+            if (options.len > 0) {
+                try writer.print(" [OPTIONS]", .{});
+            }
+            if (arguments.len > 0) {
+                inline for (arguments) |field| {
+                    try writer.print(" <{s}>", .{field.name});
+                }
+            }
+            try writer.writeByte('\n');
+
+            if (arguments.len > 0) {
+                try writer.print("\n", .{});
+                try writer.print("ARGUMENTS:\n", .{});
+
+                inline for (arguments) |field| {
+                    const arg = @field(def.arguments, field.name);
+                    try writer.print("    {s: <25}", .{field.name});
+                    if (@hasField(@TypeOf(arg), "desc")) {
+                        try writer.print("{s}", .{arg.desc});
+                    }
+                    try writer.writeByte('\n');
+                }
+            }
+
+            if (options.len > 0) {
+                try writer.print("\n", .{});
+                try writer.print("OPTIONS:\n", .{});
+
+                inline for (options) |field| {
+                    const option = @field(def.options, field.name);
+                    if (@hasField(@TypeOf(option), "short")) {
+                        try writer.print("    --{s}, -{c}", .{ field.name, option.short });
+                        for (0..(19 - field.name.len)) |_| {
+                            try writer.print(" ", .{});
+                        }
+                    } else {
+                        try writer.print("    --{s}", .{field.name});
+                        for (0..(23 - field.name.len)) |_| {
+                            try writer.print(" ", .{});
+                        }
+                    }
+                    if (@hasField(@TypeOf(option), "desc")) {
+                        try writer.print("{s}", .{option.desc});
+                    }
+                    try writer.writeByte('\n');
+                }
+            }
+        }
     };
 }
 
@@ -273,4 +328,10 @@ fn makeField(name: [:0]const u8, field_type: type, default: field_type) std.buil
         .is_comptime = false,
         .alignment = @alignOf(field_type),
     };
+}
+
+fn programName(alloc: Allocator) ![]const u8 {
+    const path = try std.fs.selfExePathAlloc(alloc);
+    defer alloc.free(path);
+    return try alloc.dupe(u8, std.fs.path.basename(path));
 }

@@ -12,10 +12,21 @@ will not make any promises on when or if i get to the issue.
 
 # Features
 
-- Positional Arguments, accessable via names
-- Options with both long and short forms, working as you would expect (`--long, -l`, `--long value, -l value`, `--long=value, -l=value`)
+### Whats Special?
+
+- Definition of Options and Arguments with an anonymous struct
+- Compile Time Type analysis
+- Access of Options and Arguments via struct-fields
+- Automatic Help Text printing
+
+### What CLI Interface does this handle?
+
+- Positional Arguments
+- Additional Arguments accessible for manual handling
+- Named Options, both in long and short
+    - Flags: `--flag, -f` for bool values
+    - Options: `--value val, --value=val, -v val` for everything else
 - Combined short flags (`-abc`)
-- Help/Usage Text
 
 # Usage
 
