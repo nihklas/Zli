@@ -194,7 +194,6 @@ pub fn Parser(def: anytype) type {
             }
             try writer.writeByte('\n');
 
-            // TODO: Add "=<VALUE>" if Value is needed, with 'VALUE' being the datatype
             if (arguments.len > 0) {
                 try writer.print("\n", .{});
                 try writer.print("ARGUMENTS:\n", .{});
@@ -209,6 +208,7 @@ pub fn Parser(def: anytype) type {
                 }
             }
 
+            // TODO: Add "=<VALUE>" if Value is needed, with 'VALUE' being the datatype
             if (options.len > 0) {
                 try writer.print("\n", .{});
                 try writer.print("OPTIONS:\n", .{});
