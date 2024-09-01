@@ -351,6 +351,8 @@ fn checkInputScheme(input: anytype) void {
         @compileError("Only fields '.options' and '.arguments' are allowed.");
     }
 
+    // TODO: add check for invalid  fields on options and arguments
+
     const options_def = input.options;
     const options_type = @TypeOf(options_def);
 
@@ -431,6 +433,10 @@ fn checkInputScheme(input: anytype) void {
             @compileError(std.fmt.comptimePrint("Argument position '{d}' exists multiple time", .{argument.pos}));
         }
         argument_positions[index] = true;
+
+        if (@hasField(argument_type, "desc")) {
+            // TODO:
+        }
     }
 }
 
