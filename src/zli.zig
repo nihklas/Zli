@@ -24,6 +24,7 @@ pub fn Parser(def: anytype) type {
 
     const Options = MakeOptions(def.options);
     const Arguments = MakeArguments(def.arguments);
+    // TODO: Add sorted Arguments to optimize positional argument setting
 
     return struct {
         const Self = @This();
