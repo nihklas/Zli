@@ -14,8 +14,8 @@ pub fn main() !u8 {
             .help = .{ .type = bool, .short = 'h', .default = false },
         },
         .arguments = .{
-            .name = .{ .type = []const u8, .pos = 2, .desc = "Just a name" },
-            .age = .{ .type = u8, .pos = 1, .desc = "Put in your age" },
+            .name = .{ .type = []const u8, .pos = 1, .desc = "Just a name" },
+            .age = .{ .type = u8, .pos = 2, .desc = "Put in your age" },
         },
     }).init(alloc);
     defer parser.deinit();

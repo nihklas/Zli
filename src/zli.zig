@@ -190,7 +190,7 @@ pub fn Parser(def: anytype) type {
             defer self.alloc.free(program_name);
 
             const options = std.meta.fields(Options);
-            const arguments = std.meta.fields(Arguments);
+            const arguments = sortedArguments();
 
             try writer.print("USAGE: {s}", .{program_name});
             if (options.len > 0) {
@@ -203,6 +203,7 @@ pub fn Parser(def: anytype) type {
             }
             try writer.writeByte('\n');
 
+            // TODO: Add "=<VALUE>" if Value is needed, with 'VALUE' being the datatype
             if (arguments.len > 0) {
                 try writer.print("\n", .{});
                 try writer.print("ARGUMENTS:\n", .{});
@@ -240,6 +241,31 @@ pub fn Parser(def: anytype) type {
                     try writer.writeByte('\n');
                 }
             }
+        }
+
+        fn sortedArguments() []std.builtin.Type.StructField {
+            const arguments = std.meta.fields(Arguments);
+            var sorted: [arguments.len]std.builtin.Type.StructField = undefined;
+            var index_filled: [arguments.len]bool = .{false} ** arguments.len;
+
+            for (arguments) |field| {
+                const arg = @field(def.arguments, field.name);
+                if (!@hasField(@TypeOf(arg), "pos")) {
+                    // TODO: Move to schema validation
+                    @compileError(std.fmt.comptimePrint("Argument '{s}' is missing field .pos", .{field.name}));
+                }
+
+                const idx = arg.pos - 1;
+                if (index_filled[idx]) {
+                    // TODO: Move to schema validation
+                    @compileError(std.fmt.comptimePrint("Argument position '{d}' exists multiple time", .{arg.pos}));
+                }
+
+                sorted[idx] = field;
+                index_filled[idx] = true;
+            }
+
+            return sorted[0..];
         }
     };
 }
