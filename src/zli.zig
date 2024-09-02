@@ -301,6 +301,8 @@ fn MakeOptions(options: anytype) type {
                 @compileError("Default values are only supported for non-pointer values");
             }
             fields[i] = makeField(field.name, field_type, @as(field_type, option.default));
+        } else if (field_type == bool) {
+            fields[i] = makeField(field.name, field_type, false);
         } else {
             const optional_type = @Type(std.builtin.Type{ .optional = .{ .child = field_type } });
             fields[i] = makeField(field.name, optional_type, null);

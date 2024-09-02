@@ -8,10 +8,10 @@ pub fn main() !u8 {
 
     var parser = try zli.Parser(.{
         .options = .{
-            .bool = .{ .type = bool, .short = 'b', .desc = "Simple flag", .default = false },
-            .a = .{ .type = bool, .short = 'a', .default = false },
+            .bool = .{ .type = bool, .short = 'b', .desc = "Simple flag" },
+            .a = .{ .type = bool, .short = 'a' },
             .int = .{ .type = i32, .short = 'i', .desc = "Simple integer", .default = 0 },
-            .help = .{ .type = bool, .short = 'h', .default = false },
+            .help = .{ .type = bool, .short = 'h' },
         },
         .arguments = .{
             .name = .{ .type = []const u8, .pos = 1, .desc = "Just a name" },
