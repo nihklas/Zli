@@ -33,7 +33,8 @@ pub fn Parser(def: anytype) type {
     checkInputScheme(def);
     const Options = MakeOptions(def.options);
     const Arguments = MakeArguments(def.arguments);
-    // TODO: Add sorted Arguments to optimize positional argument setting
+    // TODO: Add map for argument positions to arguments
+    // TODO: Add map for cli names to option field names
 
     return struct {
         const Self = @This();
