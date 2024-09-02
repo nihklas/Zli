@@ -10,6 +10,24 @@ const Error = error{
     NotAFlag,
 };
 
+/// Create a new Parser with the CLI Definition passed.
+/// The passed struct must have top level fields '.options' and '.arguments'.
+/// Both have to be structs defining the options and arguments respectively.
+/// The structs have to look like this:
+/// .{
+///     .options = .{
+///         .example = .{ .type = bool, .short = 'e', .desc = "interesting", .default = false },
+///         .more = .{ .type = []const u8 }
+///     },
+///     .arguments = .{
+///         .input = .{ .type = i32, .pos = 1, .desc = "input for program" },
+///         .second = .{ .type = []const u8, .pos = 2 },
+///     },
+/// }
+///
+/// In options, only the .type field is required. .short, .desc and .default are optional.
+/// In arguments, .type and .pos are required. .desc is optional.
+/// When accessing the options later, the datatype of the field will be an optional version of the specified datatype
 pub fn Parser(def: anytype) type {
     checkInputScheme(def);
     const Options = MakeOptions(def.options);

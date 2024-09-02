@@ -18,10 +18,11 @@ pub fn main() !u8 {
             .age = .{ .type = u8, .pos = 2, .desc = "Put in your age" },
         },
     }).init(alloc);
-    defer parser.deinit();
-    try parser.parse();
+    defer parser.deinit(); // Remember to call .deinit()
+    try parser.parse(); // Call .parse() before accessing any value
 
     if (parser.options.help) {
+        // print the auto-generated usage text
         try parser.help(std.io.getStdOut().writer());
         return 0;
     }
