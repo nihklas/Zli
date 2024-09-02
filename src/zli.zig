@@ -27,7 +27,8 @@ const Error = error{
 ///
 /// In options, only the .type field is required. .short, .desc and .default are optional.
 /// In arguments, .type and .pos are required. .desc is optional.
-/// When accessing the options later, the datatype of the field will be an optional version of the specified datatype
+/// When accessing the fields, the datatype of the respective field is an optional version of the specified type.
+/// If a default value for an option is specified, the type is not an optional. Default values are not supported for pointer types (strings).
 pub fn Parser(def: anytype) type {
     checkInputScheme(def);
     const Options = MakeOptions(def.options);
@@ -39,6 +40,7 @@ pub fn Parser(def: anytype) type {
 
         options: Options,
         arguments: Arguments,
+        /// Holds any arguments that came after the specified args
         extra_args: [][]const u8,
         alloc: Allocator,
         args: [][:0]u8,
@@ -63,6 +65,8 @@ pub fn Parser(def: anytype) type {
             self.* = undefined;
         }
 
+        /// Parse the given CLI Arguments
+        /// This needs to be called before accessing any of the options and arguments
         pub fn parse(self: *Self) !void {
             var current_argument: usize = 1;
             var extra_args = std.ArrayList([]const u8).init(self.alloc);
@@ -194,6 +198,7 @@ pub fn Parser(def: anytype) type {
             }
         }
 
+        /// Generate a Help Message and print it to the passed writer
         pub fn help(self: *Self, writer: anytype) !void {
             const program_name = try programName(self.alloc);
             defer self.alloc.free(program_name);
@@ -292,6 +297,9 @@ fn MakeOptions(options: anytype) type {
         }
 
         if (@hasField(@TypeOf(option), "default")) {
+            if (@typeInfo(field_type) == .pointer) {
+                @compileError("Default values are only supported for non-pointer values");
+            }
             fields[i] = makeField(field.name, field_type, @as(field_type, option.default));
         } else {
             const optional_type = @Type(std.builtin.Type{ .optional = .{ .child = field_type } });
