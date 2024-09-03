@@ -301,6 +301,9 @@ fn MakeOptions(options: anytype) type {
             if (@typeInfo(field_type) == .pointer) {
                 @compileError("Default values are only supported for non-pointer values");
             }
+            if (@typeInfo(field_type) == .bool) {
+                @compileError("Boolean flags are automatically defaulted to false, .default is not supported");
+            }
             fields[i] = makeField(field.name, field_type, @as(field_type, option.default));
         } else if (field_type == bool) {
             fields[i] = makeField(field.name, field_type, false);
@@ -464,7 +467,7 @@ fn checkInputScheme(input: anytype) void {
         argument_positions[index] = true;
 
         if (@hasField(argument_type, "desc")) {
-            // TODO:
+            // TODO: add check?
         }
     }
 }
