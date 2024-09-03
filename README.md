@@ -38,7 +38,7 @@ zig fetch git+https://gitlab.com/nihklas/zli.git --save
 After that, add this to your build.zig
 ```zig
 const zli = b.dependency("zli", .{ .target = target, .optimize = optimize });
-exe.root_module.addImport("Zli", zli.module("Zli"));
+exe.root_module.addImport("zli", zli.module("zli"));
 ```
 
 To update the version, just run the `zig fetch`-command again
