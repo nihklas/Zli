@@ -224,7 +224,12 @@ pub fn Parser(def: anytype) type {
 
                 inline for (arguments) |field| {
                     const arg = @field(def.arguments, field.name);
-                    try writer.print("    {s: <25}", .{field.name});
+                    if (@hasField(@TypeOf(arg), "value_hint")) {
+                        const full_str = std.fmt.comptimePrint("{s}=<{s}>", .{ field.name, arg.value_hint });
+                        try writer.print("    {s: <30}", .{full_str});
+                    } else {
+                        try writer.print("    {s: <30}", .{field.name});
+                    }
                     if (@hasField(@TypeOf(arg), "desc")) {
                         try writer.print("{s}", .{arg.desc});
                     }
@@ -232,24 +237,24 @@ pub fn Parser(def: anytype) type {
                 }
             }
 
-            // TODO: Add "=<VALUE>" if Value is needed, with 'VALUE' being the datatype
             if (options.len > 0) {
                 try writer.print("\n", .{});
                 try writer.print("OPTIONS:\n", .{});
 
                 inline for (options) |field| {
                     const option = @field(def.options, field.name);
-                    if (@hasField(@TypeOf(option), "short")) {
-                        try writer.print("    --{s}, -{c}", .{ field.name, option.short });
-                        for (0..(19 - field.name.len)) |_| {
-                            try writer.print(" ", .{});
-                        }
+                    const option_name = if (@hasField(@TypeOf(option), "short"))
+                        std.fmt.comptimePrint("-{c}, --{s}", .{ option.short, field.name })
+                    else
+                        std.fmt.comptimePrint("--{s}", .{field.name});
+
+                    if (@hasField(@TypeOf(option), "value_hint")) {
+                        const full_str = std.fmt.comptimePrint("{s}=<{s}>", .{ option_name, option.value_hint });
+                        try writer.print("    {s: <30}", .{full_str});
                     } else {
-                        try writer.print("    --{s}", .{field.name});
-                        for (0..(23 - field.name.len)) |_| {
-                            try writer.print(" ", .{});
-                        }
+                        try writer.print("    {s: <30}", .{option_name});
                     }
+
                     if (@hasField(@TypeOf(option), "desc")) {
                         try writer.print("{s}", .{option.desc});
                     }
