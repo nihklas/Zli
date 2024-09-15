@@ -30,9 +30,9 @@ const Error = error{
 /// When accessing the fields, the datatype of the respective field is an optional version of the specified type.
 /// If a default value for an option is specified, the type is not an optional. Default values are not supported for pointer types (strings).
 pub fn Parser(def: anytype) type {
-    checkInputScheme(def);
-    const Options = MakeOptions(def.options);
-    const Arguments = MakeArguments(def.arguments);
+    // checkInputScheme(def);
+    const Options = MakeOptions(def);
+    const Arguments = MakeArguments(def);
     // TODO: Add map for argument positions to arguments
     // TODO: Add map for cli names to option field names
 
@@ -289,7 +289,11 @@ fn convertValue(target: type, value: []const u8) Error!target {
     };
 }
 
-fn MakeOptions(options: anytype) type {
+fn MakeOptions(def: anytype) type {
+    if (!@hasField(@TypeOf(def), "options")) {
+        return struct {};
+    }
+    const options = def.options;
     const option_typedef = @TypeOf(options);
     const option_fields = std.meta.fields(option_typedef);
     var fields: [option_fields.len]std.builtin.Type.StructField = undefined;
@@ -328,7 +332,11 @@ fn MakeOptions(options: anytype) type {
     });
 }
 
-fn MakeArguments(arguments: anytype) type {
+fn MakeArguments(def: anytype) type {
+    if (!@hasField(@TypeOf(def), "arguments")) {
+        return struct {};
+    }
+    const arguments = def.arguments;
     const argument_typedef = @TypeOf(arguments);
     const argument_fields = std.meta.fields(argument_typedef);
     var fields: [argument_fields.len]std.builtin.Type.StructField = undefined;
