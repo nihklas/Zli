@@ -30,7 +30,6 @@ const Error = error{
 /// When accessing the fields, the datatype of the respective field is an optional version of the specified type.
 /// If a default value for an option is specified, the type is not an optional. Default values are not supported for pointer types (strings).
 pub fn Parser(def: anytype) type {
-    // checkInputScheme(def);
     const Options = MakeOptions(def);
     const Arguments = MakeArguments(def);
     const Subcommands = MakeSubcommands(def);
@@ -181,10 +180,6 @@ pub fn Parser(def: anytype) type {
             return Error.UnrecognizedOption;
         }
 
-        fn optionExists(name: []const u8) bool {
-            return @hasField(Options, name);
-        }
-
         fn setArgument(self: *Self, index: usize, value: []const u8) Error!void {
             const fields = std.meta.fields(Arguments);
 
@@ -203,6 +198,7 @@ pub fn Parser(def: anytype) type {
 
         /// Generate a Help Message and print it to the passed writer
         pub fn help(self: *Self, writer: anytype) !void {
+            // TODO: Add subcommands, change output format depending on active subcommand
             const program_name = try programName(self.alloc);
             defer self.alloc.free(program_name);
 
@@ -456,6 +452,8 @@ fn makeField(name: [:0]const u8, field_type: type, default: field_type) std.buil
 }
 
 fn checkInputScheme(input: anytype) void {
+    // TODO: make more checks, so there is no need to validate scheme elsewhere
+    // Split into functions, to make "recursive" structure with subcommands possible
     const def = @TypeOf(input);
 
     if (!@hasField(def, "options")) {
