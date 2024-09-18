@@ -12,21 +12,4 @@ pub const Parser = zli.Parser(.{
         .age = .{ .type = u8, .pos = 1, .desc = "Put in your age as the first argument", .value_hint = "INT" },
         .name = .{ .type = []const u8, .pos = 2, .desc = "Put your name as the second argument", .value_hint = "STRING" },
     },
-    .subcommands = .{
-        .@"test" = .{
-            .options = .{
-                .another = .{ .type = bool, .short = 'a', .desc = "Some nested thingy" },
-            },
-        },
-        .hello = .{
-            .arguments = .{
-                .pos = .{ .type = u8, .pos = 1, .desc = "Just a simple positional" },
-            },
-            .subcommands = .{
-                .options = .{
-                    .nested = .{ .type = i32, .short = 'i', .desc = "Deeply nested" },
-                },
-            },
-        },
-    },
 });

@@ -32,7 +32,6 @@ const Error = error{
 pub fn Parser(def: anytype) type {
     const Options = MakeOptions(def);
     const Arguments = MakeArguments(def);
-    const Subcommands = MakeSubcommands(def);
     // TODO: Add map for argument positions to arguments
 
     return struct {
@@ -40,7 +39,6 @@ pub fn Parser(def: anytype) type {
 
         options: Options,
         arguments: Arguments,
-        subcommand: Subcommands,
         /// Holds any arguments that came after the specified args
         extra_args: [][]const u8,
         alloc: Allocator,
@@ -51,7 +49,6 @@ pub fn Parser(def: anytype) type {
             return .{
                 .arguments = .{},
                 .options = .{},
-                .subcommand = ._non,
                 .extra_args = &.{},
                 .alloc = alloc,
                 .args = try std.process.argsAlloc(alloc),
@@ -359,76 +356,6 @@ fn MakeArguments(def: anytype) type {
             .fields = &fields,
             .decls = &.{},
             .is_tuple = false,
-        },
-    });
-}
-
-fn MakeSubcommands(def: anytype) type {
-    if (!@hasField(@TypeOf(def), "subcommands")) {
-        return union(enum) { _non: void };
-    }
-    const subcommands = def.subcommands;
-    const subcommand_type = @TypeOf(subcommands);
-    const subcommands_fields = std.meta.fields(subcommand_type);
-    var fields: [subcommands_fields.len + 1]std.builtin.Type.UnionField = undefined;
-    const tag_type: std.builtin.Type.Enum = tag: {
-        var enum_values: [subcommands_fields.len + 1]std.builtin.Type.EnumField = undefined;
-        for (subcommands_fields, 1..) |field, i| {
-            enum_values[i] = .{ .name = field.name, .value = i };
-        }
-        enum_values[0] = .{ .name = "_non", .value = 0 };
-        break :tag .{
-            .tag_type = std.math.IntFittingRange(0, subcommands_fields.len + 1),
-            .fields = &enum_values,
-            .decls = &.{},
-            .is_exhaustive = true,
-        };
-    };
-
-    for (subcommands_fields, 1..) |field, i| {
-        const sub = @field(subcommands, field.name);
-        const sub_type = field.type;
-
-        if (@typeInfo(sub_type) != .@"struct") {
-            @compileError(std.fmt.comptimePrint("Subcommand definition for '{s}' must be a struct, got {}", .{ field.name, sub_type }));
-        }
-
-        const args = MakeArguments(sub);
-        const options = MakeOptions(sub);
-        const nested_subs = MakeSubcommands(sub);
-
-        const resulting_type = @Type(.{
-            .@"struct" = .{
-                .layout = .auto,
-                .fields = &.{
-                    makeField("arguments", args, .{}),
-                    makeField("options", options, .{}),
-                    makeField("subcommand", nested_subs, ._non),
-                },
-                .decls = &.{},
-                .is_tuple = false,
-            },
-        });
-
-        fields[i] = .{
-            .name = field.name,
-            .type = resulting_type,
-            .alignment = @alignOf(resulting_type),
-        };
-    }
-
-    fields[0] = .{
-        .name = "_non",
-        .type = void,
-        .alignment = @alignOf(void),
-    };
-
-    return @Type(.{
-        .@"union" = .{
-            .layout = .auto,
-            .tag_type = @Type(.{ .@"enum" = tag_type }),
-            .fields = &fields,
-            .decls = &.{},
         },
     });
 }
