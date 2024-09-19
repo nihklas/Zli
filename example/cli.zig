@@ -17,7 +17,7 @@ pub fn main() !void {
 
     const output_file_path = args[1];
 
-    try zli.generateParser(output_file_path, arena, .{
+    try zli.generateParser(output_file_path, arena, "demo", .{
         .arguments = .{
             .age = .{ .type = u8, .pos = 0, .desc = "Put your age here", .value_hint = "AGE" },
             .number = .{ .type = i32, .pos = 1, .desc = "Some weird number", .value_hint = "NUMBER" },

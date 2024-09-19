@@ -1,7 +1,7 @@
 const std = @import("std");
 const Allocator = std.mem.Allocator;
 
-pub fn generateParser(output_file_path: []const u8, alloc: Allocator, def: anytype) !void {
+pub fn generateParser(output_file_path: []const u8, alloc: Allocator, program_name: []const u8, def: anytype) !void {
     // TODO: Complete schema checking of def
 
     var output_file = std.fs.cwd().createFile(output_file_path, .{}) catch |err| {
@@ -22,17 +22,17 @@ pub fn generateParser(output_file_path: []const u8, alloc: Allocator, def: anyty
         \\    MissingValue,
         \\};
         \\
+        \\extra_args: [][]const u8 = &.{},
+        \\args: ?[][:0]u8 = null,
+        \\alloc: Allocator,
         \\
     );
 
     try output_file.writeAll(try getArgumentStruct(def.arguments, alloc));
     try output_file.writeAll(try getOptionsStruct(def.options, alloc));
 
-    // TODO: generate help text as plain string attribute '.help'
+    try output_file.writeAll(try getHelpText(def, program_name, alloc));
     try output_file.writeAll(
-        \\extra_args: [][]const u8 = &.{},
-        \\args: ?[][:0]u8 = null,
-        \\alloc: Allocator,
         \\
         \\pub fn init(alloc: Allocator) Self {
         \\    return .{
@@ -90,6 +90,69 @@ pub fn generateParser(output_file_path: []const u8, alloc: Allocator, def: anyty
     try output_file.writeAll(try getArgumentParseFunc(def.arguments, alloc));
     try output_file.writeAll(try getLongOptionParseFunc(def.options, alloc));
     try output_file.writeAll(try getShortOptionParseFunc(def.options, alloc));
+}
+
+fn getHelpText(def: anytype, program_name: []const u8, alloc: Allocator) ![]const u8 {
+    const def_type = @TypeOf(def);
+    const has_options = @hasField(def_type, "options");
+    const sorted_arguments: [][]const u8 = comptime blk: {
+        if (!@hasField(def_type, "arguments")) {
+            break :blk &.{};
+        }
+
+        const arguments_def = def.arguments;
+        const arguments = std.meta.fields(@TypeOf(arguments_def));
+
+        var sorted: [arguments.len][]const u8 = undefined;
+        for (arguments) |arg| {
+            const arg_def = @field(arguments_def, arg.name);
+            sorted[arg_def.pos] = arg.name;
+        }
+
+        break :blk &sorted;
+    };
+
+    var text: std.ArrayList([]const u8) = .init(alloc);
+    try text.append("help: []const u8 =\n");
+
+    try text.append(try std.fmt.allocPrint(alloc, "\\\\USAGE: {s}", .{program_name}));
+
+    if (has_options) {
+        try text.append(" [OPTIONS]");
+    }
+
+    if (sorted_arguments.len > 0) {
+        inline for (sorted_arguments) |arg| {
+            try text.append(std.fmt.comptimePrint(" <{s}>", .{arg}));
+        }
+
+        try text.append("\n");
+        try text.append("\\\\\n");
+        try text.append("\\\\ARGUMENTS:");
+
+        inline for (sorted_arguments) |arg| {
+            try text.append("\n");
+            try text.append("\\\\    ");
+            const arg_def = @field(def.arguments, arg);
+            const arg_hint = hint: {
+                if (@hasField(@TypeOf(arg_def), "value_hint")) {
+                    break :hint std.fmt.comptimePrint("{s}={s}", .{ arg, arg_def.value_hint });
+                }
+                break :hint arg;
+            };
+            try text.append(std.fmt.comptimePrint("{s: <30}", .{arg_hint}));
+            if (@hasField(@TypeOf(arg_def), "desc")) {
+                try text.append(arg_def.desc);
+            }
+        }
+    }
+
+    if (has_options) {
+        // TODO: print options to help text
+    }
+
+    try text.append("\n\\\\\n,\n");
+    return std.mem.concat(alloc, u8, try text.toOwnedSlice());
 }
 
 fn getArgumentStruct(arguments: anytype, alloc: Allocator) ![]const u8 {
