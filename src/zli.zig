@@ -1,6 +1,8 @@
 const std = @import("std");
 const Allocator = std.mem.Allocator;
 
+pub const generateParser = @import("gen_parser.zig").generateParser;
+
 const Error = error{
     UnrecognizedOption,
     IndexOOB,
