@@ -1,8 +1,23 @@
 const std = @import("std");
 const Allocator = std.mem.Allocator;
 
-pub fn generateParser(output_file_path: []const u8, alloc: Allocator, program_name: []const u8, def: anytype) !void {
+pub fn generateParser(program_name: []const u8, def: anytype) !void {
     // TODO: Complete schema checking of def
+
+    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    defer std.debug.assert(gpa.deinit() == .ok);
+    var arena_state = std.heap.ArenaAllocator.init(gpa.allocator());
+    defer arena_state.deinit();
+    const alloc = arena_state.allocator();
+
+    const args = try std.process.argsAlloc(alloc);
+
+    if (args.len != 2) {
+        std.debug.print("Wrong amount of arguments", .{});
+        std.process.exit(1);
+    }
+
+    const output_file_path = args[1];
 
     var output_file = std.fs.cwd().createFile(output_file_path, .{}) catch |err| {
         std.debug.print("unable to open '{s}': {s}", .{ output_file_path, @errorName(err) });
