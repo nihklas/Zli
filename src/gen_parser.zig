@@ -148,7 +148,24 @@ fn getHelpText(def: anytype, program_name: []const u8, alloc: Allocator) ![]cons
     }
 
     if (has_options) {
-        // TODO: print options to help text
+        try text.append("\n");
+        try text.append("\\\\\n");
+        try text.append("\\\\OPTIONS:");
+
+        const options = std.meta.fields(@TypeOf(def.options));
+        inline for (options) |option| {
+            try text.append("\n");
+            try text.append("\\\\    ");
+            const option_def = @field(def.options, option.name);
+            const otion_hint = hint: {
+                // TODO: short, long, value hint
+                break :hint "";
+            };
+            try text.append(std.fmt.comptimePrint("{s: <30}", .{otion_hint}));
+            if (@hasField(@TypeOf(option_def), "desc")) {
+                try text.append(option_def.desc);
+            }
+        }
     }
 
     try text.append("\n\\\\\n,\n");
