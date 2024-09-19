@@ -157,11 +157,21 @@ fn getHelpText(def: anytype, program_name: []const u8, alloc: Allocator) ![]cons
             try text.append("\n");
             try text.append("\\\\    ");
             const option_def = @field(def.options, option.name);
-            const otion_hint = hint: {
-                // TODO: short, long, value hint
-                break :hint "";
+            const option_names = blk: {
+                if (@hasField(@TypeOf(option_def), "short")) {
+                    break :blk std.fmt.comptimePrint("-{c}, --{s}", .{ option_def.short, option.name });
+                }
+
+                break :blk std.fmt.comptimePrint("--{s}", .{option.name});
             };
-            try text.append(std.fmt.comptimePrint("{s: <30}", .{otion_hint}));
+            const option_hint = blk: {
+                if (@hasField(@TypeOf(option_def), "value_hint")) {
+                    break :blk std.fmt.comptimePrint("{s}={s}", .{ option_names, option_def.value_hint });
+                }
+
+                break :blk option_names;
+            };
+            try text.append(std.fmt.comptimePrint("{s: <30}", .{option_hint}));
             if (@hasField(@TypeOf(option_def), "desc")) {
                 try text.append(option_def.desc);
             }

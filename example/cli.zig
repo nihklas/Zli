@@ -25,7 +25,7 @@ pub fn main() !void {
         .options = .{
             .help = .{ .type = bool, .short = 'h', .desc = "Show this help message" },
             .boolean = .{ .type = bool, .short = 'b' },
-            .name = .{ .type = []const u8, .desc = "Put your name if you want, idc" },
+            .name = .{ .type = []const u8, .desc = "Put your name if you want, idc", .value_hint = "NAME" },
         },
     });
 }
