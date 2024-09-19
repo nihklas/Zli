@@ -1,7 +1,8 @@
 const std = @import("std");
 const Allocator = std.mem.Allocator;
+const program_name = @import("config").program_name;
 
-pub fn generateParser(program_name: []const u8, def: anytype) !void {
+pub fn generateParser(def: anytype) !void {
     // TODO: Complete schema checking of def
 
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
@@ -46,7 +47,7 @@ pub fn generateParser(program_name: []const u8, def: anytype) !void {
     try output_file.writeAll(try getArgumentStruct(def.arguments, alloc));
     try output_file.writeAll(try getOptionsStruct(def.options, alloc));
 
-    try output_file.writeAll(try getHelpText(def, program_name, alloc));
+    try output_file.writeAll(try getHelpText(def, alloc));
     try output_file.writeAll(
         \\
         \\pub fn init(alloc: Allocator) Self {
@@ -94,7 +95,7 @@ pub fn generateParser(program_name: []const u8, def: anytype) !void {
         \\    return switch (@typeInfo(target)) {
         \\        .int => std.fmt.parseInt(target, value, 0) catch return Error.TypeError,
         \\        .float => std.fmt.parseFloat(target, value) catch return Error.TypeError,
-        \\        .bool => value.len > 0,
+        \\        .bool => !std.mem.eql(u8, value, "false") and value.len > 0,
         \\        .pointer => value,
         \\        else => unreachable,
         \\    };
@@ -107,7 +108,7 @@ pub fn generateParser(program_name: []const u8, def: anytype) !void {
     try output_file.writeAll(try getShortOptionParseFunc(def.options, alloc));
 }
 
-fn getHelpText(def: anytype, program_name: []const u8, alloc: Allocator) ![]const u8 {
+fn getHelpText(def: anytype, alloc: Allocator) ![]const u8 {
     const def_type = @TypeOf(def);
     const has_options = @hasField(def_type, "options");
     const sorted_arguments: [][]const u8 = comptime blk: {
@@ -318,6 +319,7 @@ fn getLongOptionParseFunc(options: anytype, alloc: Allocator) ![]const u8 {
             , .{ field.name, field.name }));
         } else {
             try checks.append(try std.fmt.allocPrint(alloc,
+                \\
                 \\    if (std.mem.eql(u8, option_name, "{s}")) {{
                 \\        const value, const ret_idx = blk: {{
                 \\            if (maybe_value) |value| {{
@@ -333,6 +335,7 @@ fn getLongOptionParseFunc(options: anytype, alloc: Allocator) ![]const u8 {
                 \\        self.options.{s} = try convertValue({}, value);
                 \\        return ret_idx;
                 \\    }}
+                \\
             , .{ field.name, field.name, type_def }));
         }
     }
