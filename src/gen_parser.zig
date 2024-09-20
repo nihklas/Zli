@@ -2,7 +2,13 @@ const std = @import("std");
 const Allocator = std.mem.Allocator;
 const program_name = @import("config").program_name;
 
+var already_generated = false;
+
 pub fn generateParser(def: anytype) !void {
+    if (already_generated) {
+        std.debug.print("This function should only be called once\n", .{});
+        std.process.exit(1);
+    }
     // TODO: Complete schema checking of def
 
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
@@ -44,8 +50,8 @@ pub fn generateParser(def: anytype) !void {
         \\
     );
 
-    try output_file.writeAll(try getArgumentStruct(def.arguments, alloc));
-    try output_file.writeAll(try getOptionsStruct(def.options, alloc));
+    try output_file.writeAll(try getArgumentStruct(def, alloc));
+    try output_file.writeAll(try getOptionsStruct(def, alloc));
 
     try output_file.writeAll(try getHelpText(def, alloc));
     try output_file.writeAll(
@@ -103,9 +109,11 @@ pub fn generateParser(def: anytype) !void {
         \\
     );
 
-    try output_file.writeAll(try getArgumentParseFunc(def.arguments, alloc));
-    try output_file.writeAll(try getLongOptionParseFunc(def.options, alloc));
-    try output_file.writeAll(try getShortOptionParseFunc(def.options, alloc));
+    try output_file.writeAll(try getArgumentParseFunc(def, alloc));
+    try output_file.writeAll(try getLongOptionParseFunc(def, alloc));
+    try output_file.writeAll(try getShortOptionParseFunc(def, alloc));
+
+    already_generated = true;
 }
 
 fn getHelpText(def: anytype, alloc: Allocator) ![]const u8 {
@@ -198,9 +206,19 @@ fn getHelpText(def: anytype, alloc: Allocator) ![]const u8 {
     return std.mem.concat(alloc, u8, try text.toOwnedSlice());
 }
 
-fn getArgumentStruct(arguments: anytype, alloc: Allocator) ![]const u8 {
-    var fields: std.ArrayList([]const u8) = .init(alloc);
+fn getArgumentStruct(def: anytype, alloc: Allocator) ![]const u8 {
+    if (!@hasField(@TypeOf(def), "arguments")) {
+        return getEmptyStruct("arguments");
+    }
+    const arguments = def.arguments;
+
     const fields_def = std.meta.fields(@TypeOf(arguments));
+
+    if (fields_def.len == 0) {
+        return getEmptyStruct("arguments");
+    }
+
+    var fields: std.ArrayList([]const u8) = .init(alloc);
 
     inline for (fields_def) |argument_field| {
         const type_def = @field(arguments, argument_field.name).type;
@@ -216,9 +234,19 @@ fn getArgumentStruct(arguments: anytype, alloc: Allocator) ![]const u8 {
     , .{fields_raw});
 }
 
-fn getOptionsStruct(options: anytype, alloc: Allocator) ![]const u8 {
-    var fields: std.ArrayList([]const u8) = .init(alloc);
+fn getOptionsStruct(def: anytype, alloc: Allocator) ![]const u8 {
+    if (!@hasField(@TypeOf(def), "options")) {
+        return getEmptyStruct("options");
+    }
+
+    const options = def.options;
     const fields_def = std.meta.fields(@TypeOf(options));
+
+    if (fields_def.len == 0) {
+        return getEmptyStruct("options");
+    }
+
+    var fields: std.ArrayList([]const u8) = .init(alloc);
 
     inline for (fields_def) |option_field| {
         const option = @field(options, option_field.name);
@@ -250,9 +278,19 @@ fn getOptionsStruct(options: anytype, alloc: Allocator) ![]const u8 {
     , .{fields_raw});
 }
 
-fn getArgumentParseFunc(arguments: anytype, alloc: Allocator) ![]const u8 {
-    var checks: std.ArrayList([]const u8) = .init(alloc);
+fn getArgumentParseFunc(def: anytype, alloc: Allocator) ![]const u8 {
+    if (!@hasField(@TypeOf(def), "arguments")) {
+        return getEmptyArgumentsFunc();
+    }
+
+    const arguments = def.arguments;
     const fields = std.meta.fields(@TypeOf(arguments));
+
+    if (fields.len == 0) {
+        return getEmptyArgumentsFunc();
+    }
+
+    var checks: std.ArrayList([]const u8) = .init(alloc);
 
     try checks.append(std.fmt.comptimePrint(
         \\    if (arguments_found >= {d}) {{
@@ -288,9 +326,19 @@ fn getArgumentParseFunc(arguments: anytype, alloc: Allocator) ![]const u8 {
     , .{check_string});
 }
 
-fn getLongOptionParseFunc(options: anytype, alloc: Allocator) ![]const u8 {
-    var checks: std.ArrayList([]const u8) = .init(alloc);
+fn getLongOptionParseFunc(def: anytype, alloc: Allocator) ![]const u8 {
+    if (!@hasField(@TypeOf(def), "options")) {
+        return getEmptyOptionsFunc();
+    }
+
+    const options = def.options;
     const fields = std.meta.fields(@TypeOf(options));
+
+    if (fields.len == 0) {
+        return getEmptyOptionsFunc();
+    }
+
+    var checks: std.ArrayList([]const u8) = .init(alloc);
 
     try checks.append(
         \\    const current_option = args[idx][2..];
@@ -352,9 +400,18 @@ fn getLongOptionParseFunc(options: anytype, alloc: Allocator) ![]const u8 {
     , .{check_string});
 }
 
-fn getShortOptionParseFunc(options: anytype, alloc: Allocator) ![]const u8 {
-    var checks: std.ArrayList([]const u8) = .init(alloc);
+fn getShortOptionParseFunc(def: anytype, alloc: Allocator) ![]const u8 {
+    if (!@hasField(@TypeOf(def), "options")) {
+        return getEmptyShortOptionsFunc();
+    }
+
+    const options = def.options;
     const fields = std.meta.fields(@TypeOf(options));
+    if (fields.len == 0) {
+        return getEmptyShortOptionsFunc();
+    }
+
+    var checks: std.ArrayList([]const u8) = .init(alloc);
 
     inline for (fields) |field| {
         const option = @field(options, field.name);
@@ -382,4 +439,39 @@ fn getShortOptionParseFunc(options: anytype, alloc: Allocator) ![]const u8 {
         \\}}
         \\
     , .{check_string});
+}
+
+fn getEmptyStruct(comptime name: []const u8) []const u8 {
+    return std.fmt.comptimePrint("{s}: struct{{}} = .{{}},\n", .{name});
+}
+
+fn getEmptyArgumentsFunc() []const u8 {
+    return 
+    \\
+    \\fn parseArgument(_: *Self, arg: [:0]const u8, arguments_found: usize, extra_args: *std.ArrayList([]const u8)) !usize {
+    \\    try extra_args.append(std.mem.span(arg.ptr));
+    \\    return arguments_found;
+    \\}
+    \\
+    ;
+}
+
+fn getEmptyOptionsFunc() []const u8 {
+    return 
+    \\
+    \\fn parseLongOption(_: *Self, _: usize, _: [][:0]const u8) !usize {
+    \\    return Error.UnknownOption;
+    \\}
+    \\
+    ;
+}
+
+fn getEmptyShortOptionsFunc() []const u8 {
+    return 
+    \\
+    \\fn parseShortOptions(_: *Self, _: []const u8) !void {
+    \\    return Error.UnknownOption;
+    \\}
+    \\
+    ;
 }
