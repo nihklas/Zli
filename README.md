@@ -48,33 +48,32 @@ exe.root_module.addImport("zli", zli.module("zli"));
 
 ## Build Time Parser Usage
 
-To create a `Parser.zig` File at Build-time, use the following function in your `build.zig`:
+To create a `Parser.zig` File at Build-time, add the following lines to your build definition:
 
 ```zig
-pub fn buildParser(b: *std.Build, parser_file: []const u8, program: *std.Build.Step.Compile) void {
-    const zli_dep = b.dependency("zli", .{
-        .target = b.host,
+const std = @import("std");
+const zli = @import("zli");
+
+pub fn build(b: *std.Build) void {
+    const target = b.standardTargetOptions(.{});
+    const optimize = b.standardOptimizeOption(.{});
+    const zli_dep = b.dependency("zli", .{});
+
+    const exe = b.addExecutable(.{
+        .name = "zli_test",
+        .root_source_file = b.path("src/main.zig"),
+        .target = target,
+        .optimize = optimize,
     });
-    const zli = zli_dep.module("zli");
 
-    const generate_parser = b.addExecutable(.{
-        .name = "generate_parser",
-        .root_source_file = b.path(parser_file),
-        .target = b.host,
-    });
-
-    const config = b.addOptions();
-    config.addOption([]const u8, "program_name", program.name);
-
-    zli.addOptions("config", config);
-    generate_parser.root_module.addImport("zli", zli);
-    const gen_step = b.addRunArtifact(generate_parser);
-
-    program.root_module.addAnonymousImport("Zli", .{ .root_source_file = gen_step.addOutputFileArg("Parser.zig") });
+    // This adds a new Step to the build-graph, which builds the Parser file and makes it available to import as 'Zli'
+    zli.buildParser(b, zli_dep.module("zli"), exe, "src/cli.zig");
+    b.installArtifact(exe);
+    // ...
 }
 ```
 
-Now you need to create a seperate Zig-File to create the Step for building the Parser. For example, it can look like this
+Now you need to create a seperate Zig-File to create the Step for building the Parser. For example, it can look like this:
 
 ```zig
 // src/cli.zig
