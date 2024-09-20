@@ -87,7 +87,11 @@ pub fn generateParser(def: anytype) !void {
         \\        }
         \\
         \\        if (arg[0] == '-') {
-        \\            try self.parseShortOptions(arg[1..]);
+        \\            if (arg.len == 2) {
+        \\                idx = try self.parseSingleShortOption(idx, args);
+        \\            } else {
+        \\                try self.parseShortOptions(arg[1..]);
+        \\            }
         \\            continue;
         \\        }
         \\
@@ -112,6 +116,7 @@ pub fn generateParser(def: anytype) !void {
     try output_file.writeAll(try getArgumentParseFunc(def, alloc));
     try output_file.writeAll(try getLongOptionParseFunc(def, alloc));
     try output_file.writeAll(try getShortOptionParseFunc(def, alloc));
+    try output_file.writeAll(try getSingleShortOptionParseFunc(def, alloc));
 
     already_generated = true;
 }
@@ -416,15 +421,17 @@ fn getShortOptionParseFunc(def: anytype, alloc: Allocator) ![]const u8 {
     inline for (fields) |field| {
         const option = @field(options, field.name);
         const type_def = option.type;
-        if (type_def == bool and @hasField(@TypeOf(option), "short")) {
+        if (@hasField(@TypeOf(option), "short")) {
             const short_name = option.short;
-            try checks.append(std.fmt.comptimePrint(
-                \\        if (flag == '{c}') {{
-                \\            self.options.{s} = true;
-                \\            continue;
-                \\        }}
-                \\
-            , .{ short_name, field.name }));
+            if (type_def == bool) {
+                try checks.append(std.fmt.comptimePrint(
+                    \\        if (flag == '{c}') {{
+                    \\            self.options.{s} = true;
+                    \\            continue;
+                    \\        }}
+                    \\
+                , .{ short_name, field.name }));
+            }
         }
     }
 
@@ -436,6 +443,57 @@ fn getShortOptionParseFunc(def: anytype, alloc: Allocator) ![]const u8 {
         \\{s}
         \\        return Error.UnknownOption;
         \\    }}
+        \\}}
+        \\
+    , .{check_string});
+}
+
+fn getSingleShortOptionParseFunc(def: anytype, alloc: Allocator) ![]const u8 {
+    if (!@hasField(@TypeOf(def), "options")) {
+        return getEmptySingleShortOptionsFunc();
+    }
+
+    const options = def.options;
+    const fields = std.meta.fields(@TypeOf(options));
+    if (fields.len == 0) {
+        return getEmptySingleShortOptionsFunc();
+    }
+
+    var checks: std.ArrayList([]const u8) = .init(alloc);
+
+    inline for (fields) |field| {
+        const option = @field(options, field.name);
+        const type_def = option.type;
+        if (@hasField(@TypeOf(option), "short")) {
+            const short_name = option.short;
+            if (type_def != bool) {
+                try checks.append(std.fmt.comptimePrint(
+                    \\
+                    \\    if (flag == '{c}') {{
+                    \\        const value, const ret_idx = blk: {{
+                    \\            if (idx < args.len - 1 and args[idx + 1][0] != '-') {{
+                    \\                break :blk .{{ args[idx + 1], idx + 1 }};
+                    \\            }}
+                    \\            return Error.MissingValue;
+                    \\        }};
+                    \\        self.options.int = try convertValue({}, value);
+                    \\        return ret_idx;
+                    \\    }}
+                    \\
+                , .{ short_name, type_def }));
+            }
+        }
+    }
+
+    const check_string = try std.mem.concat(alloc, u8, try checks.toOwnedSlice());
+    return std.fmt.allocPrint(alloc,
+        \\
+        \\fn parseSingleShortOption(self: *Self, idx: usize, args: [][:0]const u8) !usize {{
+        \\    const option = args[idx][1..];
+        \\    const flag = option[0];
+        \\{s}
+        \\    try self.parseShortOptions(option);
+        \\    return idx;
         \\}}
         \\
     , .{check_string});
@@ -471,6 +529,18 @@ fn getEmptyShortOptionsFunc() []const u8 {
     \\
     \\fn parseShortOptions(_: *Self, _: []const u8) !void {
     \\    return Error.UnknownOption;
+    \\}
+    \\
+    ;
+}
+
+fn getEmptySingleShortOptionsFunc() []const u8 {
+    return 
+    \\
+    \\fn parseSingleShortOption(self: *Self, idx: usize, args: [][:0]const u8) !usize {
+    \\    const option = args[idx][1..];
+    \\    try self.parseShortOptions(option);
+    \\    return idx;
     \\}
     \\
     ;
