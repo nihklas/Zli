@@ -1,4 +1,3 @@
-const std = @import("std");
 const zli = @import("zli");
 
 pub fn main() !void {
