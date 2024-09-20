@@ -476,11 +476,11 @@ fn getSingleShortOptionParseFunc(def: anytype, alloc: Allocator) ![]const u8 {
                     \\            }}
                     \\            return Error.MissingValue;
                     \\        }};
-                    \\        self.options.int = try convertValue({}, value);
+                    \\        self.options.{s} = try convertValue({}, value);
                     \\        return ret_idx;
                     \\    }}
                     \\
-                , .{ short_name, type_def }));
+                , .{ short_name, field.name, type_def }));
             }
         }
     }
