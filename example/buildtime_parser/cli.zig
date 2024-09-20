@@ -16,7 +16,14 @@ pub fn main() !void {
         },
         .arguments = .{
             .age = .{ .type = u8, .pos = 0, .desc = "Put in your age as the first argument", .value_hint = "INT" },
-            .name = .{ .type = []const u8, .pos = 1, .desc = "Put your name as the second argument", .value_hint = "STRING" },
+        },
+        .subcommands = .{
+            .hello = .{
+                .arguments = .{
+                    .name = .{ .type = []const u8, .pos = 0, .desc = "Put the name to be greeted", .value_hint = "NAME" },
+                },
+                .desc = "Greet someone special",
+            },
         },
     });
 }

@@ -34,7 +34,6 @@ const Error = error{
 pub fn Parser(def: anytype) type {
     const Options = MakeOptions(def);
     const Arguments = MakeArguments(def);
-    // TODO: Add map for argument positions to arguments
 
     return struct {
         const Self = @This();
@@ -197,7 +196,6 @@ pub fn Parser(def: anytype) type {
 
         /// Generate a Help Message and print it to the passed writer
         pub fn help(self: *Self, writer: anytype) !void {
-            // TODO: Add subcommands, change output format depending on active subcommand
             const program_name = try programName(self.alloc);
             defer self.alloc.free(program_name);
 
@@ -378,112 +376,6 @@ fn makeField(name: [:0]const u8, field_type: type, default: field_type) std.buil
         .is_comptime = false,
         .alignment = @alignOf(field_type),
     };
-}
-
-fn checkInputScheme(input: anytype) void {
-    // TODO: make more checks, so there is no need to validate scheme elsewhere
-    // Split into functions, to make "recursive" structure with subcommands possible
-    const def = @TypeOf(input);
-
-    if (!@hasField(def, "options")) {
-        @compileError("No options defined. If this command doesn't have options, pass an empty struct.");
-    }
-
-    if (!@hasField(def, "arguments")) {
-        @compileError("No arguments defined. If this command doesn't have arguments, pass an empty struct.");
-    }
-
-    if (std.meta.fields(def).len > 2) {
-        @compileError("Only fields '.options' and '.arguments' are allowed.");
-    }
-
-    // TODO: add check for invalid  fields on options and arguments
-
-    const options_def = input.options;
-    const options_type = @TypeOf(options_def);
-
-    if (@typeInfo(options_type) != .@"struct") {
-        @compileError("Field '.options' must be a struct");
-    }
-
-    const options_fields = std.meta.fields(options_type);
-
-    inline for (options_fields) |field| {
-        const option = @field(options_def, field.name);
-        const option_type = @TypeOf(option);
-        if (@typeInfo(option_type) != .@"struct") {
-            @compileError(std.fmt.comptimePrint("Field '{s}' must be a struct", .{field.name}));
-        }
-
-        if (!@hasField(option_type, "type")) {
-            @compileError(std.fmt.comptimePrint("Struct '{s}' must have a field 'type'", .{field.name}));
-        }
-
-        if (@TypeOf(option.type) != type) {
-            @compileError(std.fmt.comptimePrint("Field '.type' on '{s}' must be of type 'type'", .{field.name}));
-        }
-
-        if (@hasField(option_type, "short")) {
-            const short_type = @TypeOf(option.short);
-            if (@typeInfo(short_type) != .int and @typeInfo(short_type) != .comptime_int) {
-                @compileError(std.fmt.comptimePrint("Optional Field '.short' on '{s}' must be of type 'u8'", .{field.name}));
-            }
-        }
-
-        if (@hasField(option_type, "desc")) {
-            // TODO: check for string
-        }
-
-        if (@hasField(option_type, "default")) {
-            // TODO: default check
-        }
-    }
-
-    const arguments_def = input.arguments;
-    const arguments_type = @TypeOf(arguments_def);
-
-    if (@typeInfo(arguments_type) != .@"struct") {
-        @compileError("Field '.arguments' must be a struct");
-    }
-
-    const arguments_fields = std.meta.fields(arguments_type);
-    var argument_positions: [arguments_fields.len]bool = .{false} ** arguments_fields.len;
-
-    inline for (arguments_fields) |field| {
-        const argument = @field(arguments_def, field.name);
-        const argument_type = @TypeOf(argument);
-
-        if (@typeInfo(argument_type) != .@"struct") {
-            @compileError(std.fmt.comptimePrint("Field '{s}' must be a struct", .{field.name}));
-        }
-
-        if (!@hasField(argument_type, "type")) {
-            @compileError(std.fmt.comptimePrint("Struct '{s}' must have a field '.type'", .{field.name}));
-        }
-
-        if (!@hasField(argument_type, "pos")) {
-            @compileError(std.fmt.comptimePrint("Struct '{s}' must have a field '.pos'", .{field.name}));
-        }
-
-        if (@TypeOf(argument.type) != type) {
-            @compileError(std.fmt.comptimePrint("Field '.type' on '{s}' must be of type 'type'", .{field.name}));
-        }
-
-        const pos_type = @TypeOf(argument.pos);
-        if (@typeInfo(pos_type) != .int and @typeInfo(pos_type) != .comptime_int) {
-            @compileError(std.fmt.comptimePrint("Optional Field '.pos' on '{s}' must be of type 'u8'", .{field.name}));
-        }
-
-        const index = argument.pos - 1;
-        if (argument_positions[index]) {
-            @compileError(std.fmt.comptimePrint("Argument position '{d}' exists multiple time", .{argument.pos}));
-        }
-        argument_positions[index] = true;
-
-        if (@hasField(argument_type, "desc")) {
-            // TODO: add check?
-        }
-    }
 }
 
 fn programName(alloc: Allocator) ![]const u8 {

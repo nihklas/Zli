@@ -22,6 +22,13 @@ pub fn main() !u8 {
         return 0;
     }
 
+    switch (parser.subcommand) {
+        ._non => return baseCommand(&parser),
+        .hello => return helloCommand(&parser),
+    }
+}
+
+fn baseCommand(parser: *Zli) u8 {
     // For required arguments, this pattern leverages zigs 'orelse' keyword, to print the help text
     // and exit with a correct return code
     const age = parser.arguments.age orelse {
@@ -29,12 +36,7 @@ pub fn main() !u8 {
         return 64;
     };
 
-    const name = parser.arguments.name orelse {
-        std.debug.print("{s}", .{parser.help});
-        return 64;
-    };
-
-    std.debug.print("arguments: name '{s}', age {d}\n", .{ name, age });
+    std.debug.print("arguments: age {d}\n", .{age});
 
     std.debug.print("'bool' - typeof: {}, value: {any}\n", .{ @TypeOf(parser.options.bool), parser.options.bool });
     std.debug.print("'str'  - typeof: {}, value: {?s}\n", .{ @TypeOf(parser.options.str), parser.options.str });
@@ -42,5 +44,16 @@ pub fn main() !u8 {
     std.debug.print("'help' - typeof: {}, value: {any}\n", .{ @TypeOf(parser.options.help), parser.options.help });
     std.debug.print("'long_name' - typeof: {}, value: {any}\n", .{ @TypeOf(parser.options.long_name), parser.options.long_name });
 
+    return 0;
+}
+
+fn helloCommand(parser: *Zli) u8 {
+    const hello_cmd = parser.subcommand.hello;
+    const name = hello_cmd.arguments.name orelse {
+        std.debug.print("{s}", .{parser.help});
+        return 64;
+    };
+
+    std.debug.print("Hello {s}\n", .{name});
     return 0;
 }

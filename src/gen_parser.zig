@@ -1,6 +1,6 @@
 const std = @import("std");
 const Allocator = std.mem.Allocator;
-const program_name = @import("config").program_name;
+const exe_name = @import("config").program_name;
 
 var already_generated = false;
 
@@ -46,13 +46,15 @@ pub fn generateParser(def: anytype) !void {
         \\extra_args: [][]const u8 = &.{},
         \\args: ?[][:0]u8 = null,
         \\alloc: Allocator,
+        \\arguments_found: usize = 0,
         \\
     );
 
     try output_file.writeAll(try getArgumentStruct(def, alloc));
     try output_file.writeAll(try getOptionsStruct(def, alloc));
+    try output_file.writeAll(try getSubcommandsStruct(def, alloc, exe_name));
 
-    try output_file.writeAll(try getHelpText(def, alloc));
+    try output_file.writeAll(try getHelpText(def, alloc, exe_name));
     try output_file.writeAll(
         \\
         \\pub fn init(alloc: Allocator) Self {
@@ -76,7 +78,6 @@ pub fn generateParser(def: anytype) !void {
         \\    defer extra_args.deinit();
         \\
         \\    var idx: usize = 1;
-        \\    var arguments_found: usize = 0;
         \\    while (idx < args.len) : (idx += 1) {
         \\        const arg = args[idx];
         \\
@@ -94,7 +95,11 @@ pub fn generateParser(def: anytype) !void {
         \\            continue;
         \\        }
         \\
-        \\        arguments_found = try self.parseArgument(arg, arguments_found, &extra_args);
+        \\        if (self.arguments_found == 0 and self.parseSubcommand(arg)) {
+        \\            continue;
+        \\        }
+        \\
+        \\        try self.parseArgument(arg, &extra_args);
         \\    }
         \\
         \\    self.extra_args = try extra_args.toOwnedSlice();
@@ -116,11 +121,12 @@ pub fn generateParser(def: anytype) !void {
     try output_file.writeAll(try getLongOptionParseFunc(def, alloc));
     try output_file.writeAll(try getShortOptionParseFunc(def, alloc));
     try output_file.writeAll(try getSingleShortOptionParseFunc(def, alloc));
+    try output_file.writeAll(try getSubcommandParseFunc(def, alloc));
 
     already_generated = true;
 }
 
-fn getHelpText(def: anytype, alloc: Allocator) ![]const u8 {
+fn getHelpText(def: anytype, alloc: Allocator, program_name: []const u8) ![]const u8 {
     const def_type = @TypeOf(def);
     const has_options = @hasField(def_type, "options");
     const sorted_arguments: [][]const u8 = comptime blk: {
@@ -206,6 +212,24 @@ fn getHelpText(def: anytype, alloc: Allocator) ![]const u8 {
         }
     }
 
+    if (@hasField(@TypeOf(def), "subcommands")) {
+        // TODO: Print a list of commands available
+        try text.append("\n");
+        try text.append("\\\\\n");
+        try text.append("\\\\COMMANDS:");
+
+        const subcommands = def.subcommands;
+        inline for (std.meta.fields(@TypeOf(subcommands))) |field| {
+            try text.append("\n");
+            try text.append("\\\\    ");
+            const sub_def = @field(subcommands, field.name);
+            try text.append(std.fmt.comptimePrint("{s: <30}", .{field.name}));
+            if (@hasField(@TypeOf(sub_def), "desc")) {
+                try text.append(sub_def.desc);
+            }
+        }
+    }
+
     try text.append("\n\\\\\n,\n");
     return std.mem.concat(alloc, u8, try text.toOwnedSlice());
 }
@@ -287,7 +311,53 @@ fn getOptionsStruct(def: anytype, alloc: Allocator) ![]const u8 {
     , .{fields_raw});
 }
 
+fn getSubcommandsStruct(def: anytype, alloc: Allocator, previous_command_name: []const u8) ![]const u8 {
+    if (!@hasField(@TypeOf(def), "subcommands")) {
+        return 
+        \\subcommand: union(enum) {
+        \\    _non: void,
+        \\} = ._non,
+        \\
+        ;
+    }
+    const subcommands = def.subcommands;
+    const field_defs = std.meta.fields(@TypeOf(subcommands));
+
+    if (field_defs.len == 0) {
+        return 
+        \\subcommand: union(enum) {
+        \\    _non: void,
+        \\} = ._non,
+        \\
+        ;
+    }
+
+    var fields = std.ArrayList([]const u8).init(alloc);
+    try fields.append(
+        \\subcommand: union(enum) {
+        \\    _non: void,
+        \\
+    );
+
+    inline for (field_defs) |field| {
+        const subcommand = @field(subcommands, field.name);
+        const full_command = try std.mem.concat(alloc, u8, &.{ previous_command_name, " ", field.name });
+        try fields.append(std.fmt.comptimePrint("{s}: struct {{\n", .{field.name}));
+        try fields.append(try getArgumentStruct(subcommand, alloc));
+        try fields.append(try getOptionsStruct(subcommand, alloc));
+        try fields.append(try getSubcommandsStruct(subcommand, alloc, full_command));
+        try fields.append(try getHelpText(subcommand, alloc, full_command));
+        try fields.append("},\n");
+    }
+
+    try fields.append("} = ._non,\n");
+    const fields_raw = try fields.toOwnedSlice();
+    return try std.mem.concat(alloc, u8, fields_raw);
+}
+
 fn getArgumentParseFunc(def: anytype, alloc: Allocator) ![]const u8 {
+    // TODO: Add subcommand support
+
     if (!@hasField(@TypeOf(def), "arguments")) {
         return getEmptyArgumentsFunc();
     }
@@ -336,6 +406,8 @@ fn getArgumentParseFunc(def: anytype, alloc: Allocator) ![]const u8 {
 }
 
 fn getLongOptionParseFunc(def: anytype, alloc: Allocator) ![]const u8 {
+    // TODO: Add subcommand support
+
     if (!@hasField(@TypeOf(def), "options")) {
         return getEmptyOptionsFunc();
     }
@@ -410,6 +482,8 @@ fn getLongOptionParseFunc(def: anytype, alloc: Allocator) ![]const u8 {
 }
 
 fn getShortOptionParseFunc(def: anytype, alloc: Allocator) ![]const u8 {
+    // TODO: Add subcommand support
+
     if (!@hasField(@TypeOf(def), "options")) {
         return getEmptyShortOptionsFunc();
     }
@@ -453,6 +527,8 @@ fn getShortOptionParseFunc(def: anytype, alloc: Allocator) ![]const u8 {
 }
 
 fn getSingleShortOptionParseFunc(def: anytype, alloc: Allocator) ![]const u8 {
+    // TODO: Add subcommand support
+
     if (!@hasField(@TypeOf(def), "options")) {
         return getEmptySingleShortOptionsFunc();
     }
@@ -505,6 +581,31 @@ fn getSingleShortOptionParseFunc(def: anytype, alloc: Allocator) ![]const u8 {
         \\}}
         \\
     , .{check_string});
+}
+
+fn getSubcommandParseFunc(def: anytype, alloc: Allocator) ![]const u8 {
+    //fn parseSubcommand(self: *Self, arg: []const u8) bool {
+    //    switch (self.subcommand) {
+    //        ._non => {
+    //            if (std.mem.eql(u8, arg, "hello")) {
+    //                self.subcommand = .{ .hello = .{} };
+    //                return true;
+    //            }
+    //        },
+    //        .hello => {},
+    //    }
+    //    return false;
+    //}
+    _ = def;
+    _ = alloc;
+    return "";
+}
+
+fn getSubcommandSwitchProngs(def: anytype, alloc: Allocator, switch_condition: []const u8) ![]const u8 {
+    _ = def;
+    _ = alloc;
+    _ = switch_condition;
+    return "";
 }
 
 fn getEmptyStruct(comptime name: []const u8) []const u8 {
