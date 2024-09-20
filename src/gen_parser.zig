@@ -9,7 +9,6 @@ pub fn generateParser(def: anytype) !void {
         std.debug.print("This function should only be called once\n", .{});
         std.process.exit(1);
     }
-    // TODO: Complete schema checking of def
 
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
     defer std.debug.assert(gpa.deinit() == .ok);
@@ -268,7 +267,12 @@ fn getOptionsStruct(def: anytype, alloc: Allocator) ![]const u8 {
         };
 
         if (default) |default_val| {
-            try fields.append(std.fmt.comptimePrint("    {s}: {} = {any},\n", .{ option_field.name, option.type, default_val }));
+            const typeinfo = @typeInfo(@TypeOf(default_val));
+            if (typeinfo == .pointer and typeinfo.pointer.size == .Slice) {
+                try fields.append(std.fmt.comptimePrint("    {s}: {} = &.{any},\n", .{ option_field.name, option.type, default_val }));
+            } else {
+                try fields.append(std.fmt.comptimePrint("    {s}: {} = {any},\n", .{ option_field.name, option.type, default_val }));
+            }
         } else {
             try fields.append(std.fmt.comptimePrint("    {s}: ?{} = null,\n", .{ option_field.name, option.type }));
         }
