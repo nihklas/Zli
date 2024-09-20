@@ -489,6 +489,10 @@ fn getSingleShortOptionParseFunc(def: anytype, alloc: Allocator) ![]const u8 {
         }
     }
 
+    if (checks.items.len == 0) {
+        try checks.append("    _ = flag;");
+    }
+
     const check_string = try std.mem.concat(alloc, u8, try checks.toOwnedSlice());
     return std.fmt.allocPrint(alloc,
         \\
