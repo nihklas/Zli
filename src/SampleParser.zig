@@ -32,12 +32,36 @@ subcommand: union(enum) {
         options: struct {} = .{},
         subcommand: union(enum) {
             _non: void,
+            loudly: struct {
+                arguments: struct {
+                    name: ?[]const u8 = null,
+                } = .{},
+                options: struct {
+                    scream: bool = false,
+                } = .{},
+                subcommand: union(enum) {
+                    _non: void,
+                } = ._non,
+                help: []const u8 =
+                    \\USAGE: demo_buildtime hello loudly [OPTIONS] <name>
+                    \\
+                    \\ARGUMENTS:
+                    \\    name=NAME                     Put the name to be greeted, loudly
+                    \\
+                    \\OPTIONS:
+                    \\    --scream                      Use this to SCREAM at the person
+                    \\
+                ,
+            },
         } = ._non,
         help: []const u8 =
             \\USAGE: demo_buildtime hello <name>
             \\
             \\ARGUMENTS:
             \\    name=NAME                     Put the name to be greeted
+            \\
+            \\COMMANDS:
+            \\    loudly                        Greet someone a little louder
             \\
         ,
     },
@@ -132,7 +156,7 @@ fn parseArgument(self: *Self, arg: [:0]const u8, extra_args: *std.ArrayList([]co
                 return;
             }
         },
-        .hello => self.parseArgument_hello(arg, extra_args),
+        .hello => return self.parseArgument_hello(arg, extra_args),
     }
 }
 
@@ -146,6 +170,23 @@ fn parseArgument_hello(self: *Self, arg: [:0]const u8, extra_args: *std.ArrayLis
 
             if (self.arguments_found == 0) {
                 self.subcommand.hello.arguments.name = try convertValue([]const u8, arg);
+                return;
+            }
+        },
+        .loudly => return self.parseArgument_hello_loudly(arg, extra_args),
+    }
+}
+
+fn parseArgument_hello_loudly(self: *Self, arg: [:0]const u8, extra_args: *std.ArrayList([]const u8)) !void {
+    switch (self.subcommand.hello.subcommand.loudly.subcommand) {
+        ._non => {
+            if (self.arguments_found >= 1) {
+                try extra_args.append(std.mem.span(arg.ptr));
+                return;
+            }
+
+            if (self.arguments_found == 0) {
+                self.subcommand.hello.subcommand.loudly.arguments.name = try convertValue([]const u8, arg);
                 return;
             }
         },
@@ -270,6 +311,19 @@ fn parseSubcommand(self: *Self, arg: []const u8) bool {
     return false;
 }
 
-fn parseSubcommand_hello(_: *Self, _: []const u8) bool {
+fn parseSubcommand_hello(self: *Self, arg: []const u8) bool {
+    switch (self.subcommand.hello.subcommand) {
+        ._non => {
+            if (std.mem.eql(u8, arg, "loudly")) {
+                self.subcommand.hello.subcommand = .{ .loudly = .{} };
+                return true;
+            }
+        },
+        .loudly => return self.parseSubcommand_hello_loudly(arg),
+    }
+    return false;
+}
+
+fn parseSubcommand_hello_loudly(_: *Self, _: []const u8) bool {
     return false;
 }
