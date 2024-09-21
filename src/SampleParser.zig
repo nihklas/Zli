@@ -120,14 +120,35 @@ pub fn convertValue(target: type, value: []const u8) Error!target {
 }
 
 fn parseArgument(self: *Self, arg: [:0]const u8, extra_args: *std.ArrayList([]const u8)) !void {
-    if (self.arguments_found >= 1) {
-        try extra_args.append(std.mem.span(arg.ptr));
-        return;
-    }
+    switch (self.subcommand) {
+        ._non => {
+            if (self.arguments_found >= 1) {
+                try extra_args.append(std.mem.span(arg.ptr));
+                return;
+            }
 
-    if (self.arguments_found == 0) {
-        self.arguments.age = try convertValue(u8, arg);
-        return;
+            if (self.arguments_found == 0) {
+                self.arguments.age = try convertValue(u8, arg);
+                return;
+            }
+        },
+        .hello => self.parseArgument_hello(arg, extra_args),
+    }
+}
+
+fn parseArgument_hello(self: *Self, arg: [:0]const u8, extra_args: *std.ArrayList([]const u8)) !void {
+    switch (self.subcommand.hello.subcommand) {
+        ._non => {
+            if (self.arguments_found >= 1) {
+                try extra_args.append(std.mem.span(arg.ptr));
+                return;
+            }
+
+            if (self.arguments_found == 0) {
+                self.subcommand.hello.arguments.name = try convertValue([]const u8, arg);
+                return;
+            }
+        },
     }
 }
 

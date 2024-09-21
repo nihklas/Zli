@@ -19,10 +19,26 @@ pub fn main() !void {
         },
         .subcommands = .{
             .hello = .{
+                .desc = "Greet someone special",
                 .arguments = .{
                     .name = .{ .type = []const u8, .pos = 0, .desc = "Put the name to be greeted", .value_hint = "NAME" },
                 },
-                .desc = "Greet someone special",
+                .subcommands = .{
+                    .loudly = .{
+                        .desc = "Greet someone a little louder",
+                        .arguments = .{
+                            .name = .{
+                                .type = []const u8,
+                                .pos = 0,
+                                .desc = "Put the name to be greeted, loudly",
+                                .value_hint = "NAME",
+                            },
+                        },
+                        .options = .{
+                            .scream = .{ .type = bool, .desc = "Use this to SCREAM at the person" },
+                        },
+                    },
+                },
             },
         },
     });

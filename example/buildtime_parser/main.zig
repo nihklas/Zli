@@ -17,7 +17,7 @@ pub fn main() !u8 {
 
     switch (parser.subcommand) {
         ._non => return baseCommand(&parser),
-        .hello => return helloCommand(&parser),
+        .hello => return helloCommand(&parser, alloc),
     }
 }
 
@@ -47,13 +47,28 @@ fn baseCommand(parser: *Zli) u8 {
     return 0;
 }
 
-fn helloCommand(parser: *Zli) u8 {
+fn helloCommand(parser: *Zli, alloc: std.mem.Allocator) u8 {
     const hello_cmd = parser.subcommand.hello;
-    const name = hello_cmd.arguments.name orelse {
-        std.debug.print("{s}", .{parser.help});
-        return 64;
-    };
+    switch (hello_cmd.subcommand) {
+        ._non => {
+            const name = hello_cmd.arguments.name orelse {
+                std.debug.print("{s}", .{hello_cmd.help});
+                return 64;
+            };
 
-    std.debug.print("Hello {s}\n", .{name});
+            std.debug.print("Hello {s}\n", .{name});
+        },
+        .loudly => |loud_cmd| {
+            const name = loud_cmd.arguments.name orelse {
+                std.debug.print("{s}", .{loud_cmd.help});
+                return 64;
+            };
+
+            const name_upper = alloc.alloc(u8, name.len) catch return 1;
+            defer alloc.free(name_upper);
+            _ = std.ascii.upperString(name_upper, name);
+            std.debug.print("HELLO {s}\n", .{name_upper});
+        },
+    }
     return 0;
 }
