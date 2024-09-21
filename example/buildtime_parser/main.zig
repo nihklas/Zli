@@ -15,13 +15,6 @@ pub fn main() !u8 {
         return 64;
     };
 
-    // Boolean flags automatically default to false, unless specified otherwise
-    if (parser.options.help) {
-        // print the auto-generated usage text
-        std.debug.print("{s}", .{parser.help});
-        return 0;
-    }
-
     switch (parser.subcommand) {
         ._non => return baseCommand(&parser),
         .hello => return helloCommand(&parser),
@@ -29,6 +22,13 @@ pub fn main() !u8 {
 }
 
 fn baseCommand(parser: *Zli) u8 {
+    // Boolean flags automatically default to false, unless specified otherwise
+    if (parser.options.help) {
+        // print the auto-generated usage text
+        std.debug.print("{s}", .{parser.help});
+        return 0;
+    }
+
     // For required arguments, this pattern leverages zigs 'orelse' keyword, to print the help text
     // and exit with a correct return code
     const age = parser.arguments.age orelse {

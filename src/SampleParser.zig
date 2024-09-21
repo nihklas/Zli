@@ -12,7 +12,6 @@ const Error = error{
 extra_args: [][]const u8 = &.{},
 args: ?[][:0]u8 = null,
 alloc: Allocator,
-
 arguments_found: usize = 0,
 arguments: struct {
     age: ?u8 = null,
@@ -35,11 +34,12 @@ subcommand: union(enum) {
             _non: void,
         } = ._non,
         help: []const u8 =
-            \\USAGE: demo_buildtime <name>
+            \\USAGE: demo_buildtime hello <name>
             \\
             \\ARGUMENTS:
-            \\    name=NAME
+            \\    name=NAME                     Put the name to be greeted
             \\
+        ,
     },
 } = ._non,
 help: []const u8 =
@@ -103,6 +103,7 @@ pub fn parse(self: *Self) !void {
         }
 
         try self.parseArgument(arg, &extra_args);
+        self.arguments_found += 1;
     }
 
     self.extra_args = try extra_args.toOwnedSlice();
@@ -119,29 +120,14 @@ pub fn convertValue(target: type, value: []const u8) Error!target {
 }
 
 fn parseArgument(self: *Self, arg: [:0]const u8, extra_args: *std.ArrayList([]const u8)) !void {
-    switch (self.subcommand) {
-        ._non => {
-            if (self.arguments_found >= 1) {
-                try extra_args.append(std.mem.span(arg.ptr));
-                return;
-            }
+    if (self.arguments_found >= 1) {
+        try extra_args.append(std.mem.span(arg.ptr));
+        return;
+    }
 
-            if (self.arguments_found == 0) {
-                self.arguments.age = try convertValue(u8, arg);
-                return;
-            }
-        },
-        .hello => {
-            if (self.arguments_found >= 1) {
-                try extra_args.append(std.mem.span(arg.ptr));
-                return self.arguments_found;
-            }
-
-            if (self.arguments_found == 0) {
-                self.subcommand.hello.arguments.name = try convertValue([]const u8, arg);
-                return;
-            }
-        },
+    if (self.arguments_found == 0) {
+        self.arguments.age = try convertValue(u8, arg);
+        return;
     }
 }
 
@@ -258,7 +244,11 @@ fn parseSubcommand(self: *Self, arg: []const u8) bool {
                 return true;
             }
         },
-        .hello => {},
+        .hello => return self.parseSubcommand_hello(arg),
     }
+    return false;
+}
+
+fn parseSubcommand_hello(_: *Self, _: []const u8) bool {
     return false;
 }
