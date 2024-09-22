@@ -747,17 +747,6 @@ fn getEmptyStruct(comptime name: String) String {
     return compPrint("{s}: struct{{}} = .{{}},\n", .{name});
 }
 
-fn getEmptyArgumentsFunc() String {
-    return 
-    \\
-    \\fn parseArgument(_: *Self, arg: [:0]const u8, arguments_found: usize, extra_args: *std.ArrayList([]const u8)) !usize {
-    \\    try extra_args.append(std.mem.span(arg.ptr));
-    \\    return arguments_found;
-    \\}
-    \\
-    ;
-}
-
 fn getEmptyOptionsFunc() String {
     return 
     \\
