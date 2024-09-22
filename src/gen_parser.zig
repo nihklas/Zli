@@ -125,7 +125,7 @@ pub fn generateParser(def: anytype) !void {
     );
 
     try output_file.writeAll(try getArgumentParseFunc(def, &.{}, alloc));
-    try output_file.writeAll(try getLongOptionParseFunc(def, alloc));
+    try output_file.writeAll(try getLongOptionParseFunc(def, &.{}, alloc));
     try output_file.writeAll(try getShortOptionParseFunc(def, alloc));
     try output_file.writeAll(try getSingleShortOptionParseFunc(def, alloc));
     try output_file.writeAll(try getSubcommandParseFunc(def, &.{}, alloc));
@@ -447,80 +447,125 @@ fn getArgumentParseFunc(def: anytype, cmd_path: []String, alloc: Allocator) Allo
     );
 }
 
-fn getLongOptionParseFunc(def: anytype, alloc: Allocator) !String {
-    // TODO: Add subcommand support
+fn getLongOptionParseFunc(def: anytype, cmd_path: []String, alloc: Allocator) Allocator.Error!String {
+    const empty =
+        \\
+        \\            const discard_idx = idx;
+        \\            const discard_args = args;
+        \\            _ = discard_idx;
+        \\            _ = discard_args;
+        \\            return Error.UnknownOption;
+        \\        
+    ;
 
     if (!@hasField(@TypeOf(def), "options")) {
-        return getEmptyOptionsFunc();
+        return try renderFunction(
+            alloc,
+            def,
+            "parseLongOption",
+            "self: *Self, idx: usize, args: [][:0]const u8",
+            "idx, args",
+            "!usize",
+            empty,
+            cmd_path,
+            getLongOptionParseFunc,
+        );
     }
 
     const options = def.options;
     const fields = std.meta.fields(@TypeOf(options));
 
     if (fields.len == 0) {
-        return getEmptyOptionsFunc();
+        return try renderFunction(
+            alloc,
+            def,
+            "parseLongOption",
+            "self: *Self, idx: usize, args: [][:0]const u8",
+            "idx, args",
+            "!usize",
+            empty,
+            cmd_path,
+            getLongOptionParseFunc,
+        );
     }
 
     var checks: std.ArrayList(String) = .init(alloc);
 
     try checks.append(
-        \\    const current_option = args[idx][2..];
-        \\    const option_name, const maybe_value = blk: {
-        \\        const separator = std.mem.indexOf(u8, current_option, "=");
-        \\        if (separator) |sep| {
-        \\            break :blk .{ current_option[0..sep], current_option[sep + 1..] };
-        \\        }
-        \\        break :blk .{ current_option, null };
-        \\    };
+        \\
+        \\            const current_option = args[idx][2..];
+        \\            const option_name, const maybe_value = blk: {
+        \\                const separator = std.mem.indexOf(u8, current_option, "=");
+        \\                if (separator) |sep| {
+        \\                    break :blk .{ current_option[0..sep], current_option[sep + 1..] };
+        \\                }
+        \\                break :blk .{ current_option, null };
+        \\            };
         \\
     );
 
+    const subcommand_path = try getSubcommandPath(cmd_path, alloc);
     inline for (fields) |field| {
         const option = @field(options, field.name);
         const type_def = option.type;
 
+        const field_access = access: {
+            if (subcommand_path.len == 0) {
+                break :access ".options." ++ field.name;
+            }
+            break :access try concat(alloc, u8, &.{ subcommand_path, ".options.", field.name });
+        };
+
         if (type_def == bool) {
             try checks.append(try allocPrint(alloc,
                 \\
-                \\    if (std.mem.eql(u8, option_name, "{s}")) {{
-                \\        self.options.{s} = if (maybe_value) |value| try convertValue(bool, value) else true;
-                \\        return idx;
-                \\    }}
+                \\            if (std.mem.eql(u8, option_name, "{s}")) {{
+                \\                self{s} = if (maybe_value) |value| try convertValue(bool, value) else true;
+                \\                return idx;
+                \\            }}
                 \\
-            , .{ field.name, field.name }));
+            , .{ field.name, field_access }));
         } else {
             try checks.append(try allocPrint(alloc,
                 \\
-                \\    if (std.mem.eql(u8, option_name, "{s}")) {{
-                \\        const value, const ret_idx = blk: {{
-                \\            if (maybe_value) |value| {{
-                \\                break :blk .{{ value, idx }};
+                \\            if (std.mem.eql(u8, option_name, "{s}")) {{
+                \\                const value, const ret_idx = blk: {{
+                \\                    if (maybe_value) |value| {{
+                \\                        break :blk .{{ value, idx }};
+                \\                    }}
+                \\                    if (idx < args.len - 1 and args[idx + 1][0] != '-') {{
+                \\                        break :blk .{{ args[idx + 1], idx + 1 }};
+                \\                    }}
+                \\
+                \\                    return Error.MissingValue;
+                \\                }};
+                \\
+                \\                self{s} = try convertValue({}, value);
+                \\                return ret_idx;
                 \\            }}
-                \\            if (idx < args.len - 1 and args[idx + 1][0] != '-') {{
-                \\                break :blk .{{ args[idx + 1], idx + 1 }};
-                \\            }}
                 \\
-                \\            return Error.MissingValue;
-                \\        }};
-                \\
-                \\        self.options.{s} = try convertValue({}, value);
-                \\        return ret_idx;
-                \\    }}
-                \\
-            , .{ field.name, field.name, type_def }));
+            , .{ field.name, field_access, type_def }));
         }
     }
+    try checks.append(
+        \\
+        \\            return Error.UnknownOption;   
+        \\        
+    );
 
     const check_string = try concat(alloc, u8, try checks.toOwnedSlice());
 
-    return allocPrint(alloc,
-        \\
-        \\fn parseLongOption(self: *Self, idx: usize, args: [][:0]const u8) !usize {{
-        \\{s}
-        \\    return Error.UnknownOption;
-        \\}}
-        \\
-    , .{check_string});
+    return try renderFunction(
+        alloc,
+        def,
+        "parseLongOption",
+        "self: *Self, idx: usize, args: [][:0]const u8",
+        "idx, args",
+        "!usize",
+        check_string,
+        cmd_path,
+        getLongOptionParseFunc,
+    );
 }
 
 fn getShortOptionParseFunc(def: anytype, alloc: Allocator) !String {
@@ -628,7 +673,8 @@ fn getSingleShortOptionParseFunc(def: anytype, alloc: Allocator) !String {
 fn getSubcommandParseFunc(def: anytype, cmd_path: []String, alloc: Allocator) Allocator.Error!String {
     const empty =
         \\
-        \\            _ = arg;
+        \\            const discard_arg = arg;
+        \\            _ = discard_arg;
         \\            return false;
         \\        
     ;
