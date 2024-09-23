@@ -3,8 +3,10 @@
     .version = "0.0.0",
     .dependencies = .{},
     .paths = .{
+        "build.zig.zon",
         "build.zig",
-        "README.md",
         "src",
+        "LICENSE",
+        "README.md",
     },
 }
