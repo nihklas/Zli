@@ -40,7 +40,8 @@ To update the version, just run the `zig fetch`-command again
 
 ## Compile Time Parser Usage
 
-After that, add this to your build.zig
+To use the simpler, but more limited API, add this to your build.zig
+
 ```zig
 const zli = b.dependency("zli", .{ .target = target, .optimize = optimize });
 exe.root_module.addImport("zli", zli.module("zli"));
@@ -93,39 +94,6 @@ pub fn main() !void {
             .name = .{ .type = []const u8, .pos = 1, .desc = "Put your name as the second argument", .value_hint = "STRING" },
         },
     });
-}
-```
-
-This calls the Code to generate a Parser. You can import it in your actual `main.zig`:
-
-```zig
-// src/main.zig
-
-const std = @import("std");
-const Zli = @import("Zli");
-
-pub fn main() !u8 {
-    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
-    defer std.debug.assert(gpa.deinit() == .ok);
-    const alloc = gpa.allocator();
-
-    var parser = Zli.init(alloc);
-    defer parser.deinit(); // Remember to call .deinit()
-    // Call .parse() before accessing any value
-    parser.parse() catch |err| {
-        std.debug.print("Error: {s}\n", .{@errorName(err)});
-        std.debug.print("{s}", .{parser.help});
-        return 64;
-    };
-
-    // Boolean flags automatically default to false, unless specified otherwise
-    if (parser.options.help) {
-        // print the auto-generated usage text
-        std.debug.print("{s}", .{parser.help});
-        return 0;
-    }
-
-    // ...
 }
 ```
 
