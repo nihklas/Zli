@@ -127,7 +127,7 @@ pub fn generateParser(def: anytype) !void {
     try output_file.writeAll(try getArgumentParseFunc(def, &.{}, alloc));
     try output_file.writeAll(try getLongOptionParseFunc(def, &.{}, alloc));
     try output_file.writeAll(try getShortOptionParseFunc(def, &.{}, alloc));
-    try output_file.writeAll(try getSingleShortOptionParseFunc(def, alloc));
+    try output_file.writeAll(try getSingleShortOptionParseFunc(def, &.{}, alloc));
     try output_file.writeAll(try getSubcommandParseFunc(def, &.{}, alloc));
 
     already_generated = true;
@@ -666,17 +666,45 @@ fn getShortOptionParseFunc(def: anytype, cmd_path: []String, alloc: Allocator) A
     );
 }
 
-fn getSingleShortOptionParseFunc(def: anytype, alloc: Allocator) !String {
+fn getSingleShortOptionParseFunc(def: anytype, cmd_path: []String, alloc: Allocator) Allocator.Error!String {
     // TODO: Add subcommand support
 
+    const empty =
+        \\
+        \\            const option = args[idx][1..];
+        \\            try self.parseShortOptions(option);
+        \\            return idx;
+        \\
+    ;
+
     if (!@hasField(@TypeOf(def), "options")) {
-        return getEmptySingleShortOptionsFunc();
+        return try renderFunction(
+            alloc,
+            def,
+            "parseSingleShortOption",
+            "self: *Self, idx: usize, args: [][:0]const u8",
+            "idx, args",
+            "!usize",
+            empty,
+            cmd_path,
+            getSingleShortOptionParseFunc,
+        );
     }
 
     const options = def.options;
     const fields = std.meta.fields(@TypeOf(options));
     if (fields.len == 0) {
-        return getEmptySingleShortOptionsFunc();
+        return try renderFunction(
+            alloc,
+            def,
+            "parseSingleShortOption",
+            "self: *Self, idx: usize, args: [][:0]const u8",
+            "idx, args",
+            "!usize",
+            empty,
+            cmd_path,
+            getSingleShortOptionParseFunc,
+        );
     }
 
     var checks: std.ArrayList(String) = .init(alloc);
@@ -689,16 +717,16 @@ fn getSingleShortOptionParseFunc(def: anytype, alloc: Allocator) !String {
             if (type_def != bool) {
                 try checks.append(compPrint(
                     \\
-                    \\    if (flag == '{c}') {{
-                    \\        const value, const ret_idx = blk: {{
-                    \\            if (idx < args.len - 1 and args[idx + 1][0] != '-') {{
-                    \\                break :blk .{{ args[idx + 1], idx + 1 }};
+                    \\            if (flag == '{c}') {{
+                    \\                const value, const ret_idx = blk: {{
+                    \\                    if (idx < args.len - 1 and args[idx + 1][0] != '-') {{
+                    \\                        break :blk .{{ args[idx + 1], idx + 1 }};
+                    \\                    }}
+                    \\                    return Error.MissingValue;
+                    \\                }};
+                    \\                self.options.{s} = try convertValue({}, value);
+                    \\                return ret_idx;
                     \\            }}
-                    \\            return Error.MissingValue;
-                    \\        }};
-                    \\        self.options.{s} = try convertValue({}, value);
-                    \\        return ret_idx;
-                    \\    }}
                     \\
                 , .{ short_name, field.name, type_def }));
             }
@@ -706,21 +734,34 @@ fn getSingleShortOptionParseFunc(def: anytype, alloc: Allocator) !String {
     }
 
     if (checks.items.len == 0) {
-        try checks.append("    _ = flag;");
+        try checks.append("            _ = flag;");
     }
 
+    try checks.insert(0,
+        \\    
+        \\            const option = args[idx][1..];
+        \\            const flag = option[0];
+        \\
+    );
+    try checks.append(
+        \\
+        \\            try self.parseShortOptions(option);
+        \\            return idx;
+        \\
+    );
+
     const check_string = try concat(alloc, u8, try checks.toOwnedSlice());
-    return allocPrint(alloc,
-        \\
-        \\fn parseSingleShortOption(self: *Self, idx: usize, args: [][:0]const u8) !usize {{
-        \\    const option = args[idx][1..];
-        \\    const flag = option[0];
-        \\{s}
-        \\    try self.parseShortOptions(option);
-        \\    return idx;
-        \\}}
-        \\
-    , .{check_string});
+    return try renderFunction(
+        alloc,
+        def,
+        "parseSingleShortOption",
+        "self: *Self, idx: usize, args: [][:0]const u8",
+        "idx, args",
+        "!usize",
+        check_string,
+        cmd_path,
+        getSingleShortOptionParseFunc,
+    );
 }
 
 fn getSubcommandParseFunc(def: anytype, cmd_path: []String, alloc: Allocator) Allocator.Error!String {
