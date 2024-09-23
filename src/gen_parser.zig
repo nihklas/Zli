@@ -885,38 +885,6 @@ fn getEmptyStruct(comptime name: String) String {
     return compPrint("{s}: struct{{}} = .{{}},\n", .{name});
 }
 
-fn getEmptyOptionsFunc() String {
-    return 
-    \\
-    \\fn parseLongOption(_: *Self, _: usize, _: [][:0]const u8) !usize {
-    \\    return Error.UnknownOption;
-    \\}
-    \\
-    ;
-}
-
-fn getEmptyShortOptionsFunc() String {
-    return 
-    \\
-    \\fn parseShortOptions(_: *Self, _: []const u8) !void {
-    \\    return Error.UnknownOption;
-    \\}
-    \\
-    ;
-}
-
-fn getEmptySingleShortOptionsFunc() String {
-    return 
-    \\
-    \\fn parseSingleShortOption(self: *Self, idx: usize, args: [][:0]const u8) !usize {
-    \\    const option = args[idx][1..];
-    \\    try self.parseShortOptions(option);
-    \\    return idx;
-    \\}
-    \\
-    ;
-}
-
 fn getFunctionSuffix(cmd_path: []String, alloc: Allocator) !String {
     if (cmd_path.len == 0) {
         return "";
