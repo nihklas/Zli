@@ -126,7 +126,7 @@ pub fn generateParser(def: anytype) !void {
 
     try output_file.writeAll(try getArgumentParseFunc(def, &.{}, alloc));
     try output_file.writeAll(try getLongOptionParseFunc(def, &.{}, alloc));
-    try output_file.writeAll(try getShortOptionParseFunc(def, alloc));
+    try output_file.writeAll(try getShortOptionParseFunc(def, &.{}, alloc));
     try output_file.writeAll(try getSingleShortOptionParseFunc(def, alloc));
     try output_file.writeAll(try getSubcommandParseFunc(def, &.{}, alloc));
 
@@ -568,17 +568,44 @@ fn getLongOptionParseFunc(def: anytype, cmd_path: []String, alloc: Allocator) Al
     );
 }
 
-fn getShortOptionParseFunc(def: anytype, alloc: Allocator) !String {
-    // TODO: Add subcommand support
+fn getShortOptionParseFunc(def: anytype, cmd_path: []String, alloc: Allocator) Allocator.Error!String {
+    const empty =
+        \\
+        \\            const discard_flags = flags;
+        \\            _ = discard_flags;
+        \\            return Error.UnknownOption;
+        \\
+    ;
 
     if (!@hasField(@TypeOf(def), "options")) {
-        return getEmptyShortOptionsFunc();
+        return try renderFunction(
+            alloc,
+            def,
+            "parseShortOptions",
+            "self: *Self, flags: []const u8",
+            "flags",
+            "!void",
+            empty,
+            cmd_path,
+            getShortOptionParseFunc,
+        );
     }
 
     const options = def.options;
     const fields = std.meta.fields(@TypeOf(options));
+
     if (fields.len == 0) {
-        return getEmptyShortOptionsFunc();
+        return try renderFunction(
+            alloc,
+            def,
+            "parseShortOptions",
+            "self: *Self, flags: []const u8",
+            "flags",
+            "!void",
+            empty,
+            cmd_path,
+            getShortOptionParseFunc,
+        );
     }
 
     var checks: std.ArrayList(String) = .init(alloc);
@@ -590,27 +617,53 @@ fn getShortOptionParseFunc(def: anytype, alloc: Allocator) !String {
             const short_name = option.short;
             if (type_def == bool) {
                 try checks.append(compPrint(
-                    \\        if (flag == '{c}') {{
-                    \\            self.options.{s} = true;
-                    \\            continue;
-                    \\        }}
+                    \\
+                    \\                if (flag == '{c}') {{
+                    \\                    self.options.{s} = true;
+                    \\                    continue;
+                    \\                }}
                     \\
                 , .{ short_name, field.name }));
             }
         }
     }
 
+    if (checks.items.len == 0) {
+        return try renderFunction(
+            alloc,
+            def,
+            "parseShortOptions",
+            "self: *Self, flags: []const u8",
+            "flags",
+            "!void",
+            empty,
+            cmd_path,
+            getShortOptionParseFunc,
+        );
+    }
+
+    try checks.insert(0,
+        \\
+        \\            for (flags) |flag| {
+        \\
+    );
+    try checks.append(
+        \\            }
+        \\
+    );
     const check_string = try concat(alloc, u8, try checks.toOwnedSlice());
-    return allocPrint(alloc,
-        \\
-        \\fn parseShortOptions(self: *Self, flags: []const u8) !void {{
-        \\    for (flags) |flag| {{
-        \\{s}
-        \\        return Error.UnknownOption;
-        \\    }}
-        \\}}
-        \\
-    , .{check_string});
+
+    return try renderFunction(
+        alloc,
+        def,
+        "parseShortOptions",
+        "self: *Self, flags: []const u8",
+        "flags",
+        "!void",
+        check_string,
+        cmd_path,
+        getShortOptionParseFunc,
+    );
 }
 
 fn getSingleShortOptionParseFunc(def: anytype, alloc: Allocator) !String {
