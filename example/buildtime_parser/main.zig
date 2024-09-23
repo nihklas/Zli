@@ -51,6 +51,11 @@ fn helloCommand(parser: *Zli, alloc: std.mem.Allocator) u8 {
     const hello_cmd = parser.subcommand.hello;
     switch (hello_cmd.subcommand) {
         ._non => {
+            if (hello_cmd.options.help) {
+                std.debug.print("{s}", .{hello_cmd.help});
+                return 0;
+            }
+
             const name = hello_cmd.arguments.name orelse {
                 std.debug.print("{s}", .{hello_cmd.help});
                 return 64;
@@ -59,6 +64,11 @@ fn helloCommand(parser: *Zli, alloc: std.mem.Allocator) u8 {
             std.debug.print("Hello {s}\n", .{name});
         },
         .loudly => |loud_cmd| {
+            if (loud_cmd.options.help) {
+                std.debug.print("{s}", .{loud_cmd.help});
+                return 0;
+            }
+
             const name = loud_cmd.arguments.name orelse {
                 std.debug.print("{s}", .{loud_cmd.help});
                 return 64;

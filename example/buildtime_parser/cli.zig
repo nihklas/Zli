@@ -23,6 +23,9 @@ pub fn main() !void {
                 .arguments = .{
                     .name = .{ .type = []const u8, .pos = 0, .desc = "Put the name to be greeted", .value_hint = "NAME" },
                 },
+                .options = .{
+                    .help = .{ .type = bool, .short = 'h', .desc = "Print this help text" },
+                },
                 .subcommands = .{
                     .loudly = .{
                         .desc = "Greet someone a little louder",
@@ -36,6 +39,7 @@ pub fn main() !void {
                         },
                         .options = .{
                             .scream = .{ .type = bool, .desc = "Use this to SCREAM at the person" },
+                            .help = .{ .type = bool, .short = 'h', .desc = "Print this help text" },
                         },
                     },
                 },
