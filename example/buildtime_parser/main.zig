@@ -67,7 +67,12 @@ fn helloCommand(parser: *Zli, alloc: std.mem.Allocator) u8 {
             const name_upper = alloc.alloc(u8, name.len) catch return 1;
             defer alloc.free(name_upper);
             _ = std.ascii.upperString(name_upper, name);
-            std.debug.print("HELLO {s}\n", .{name_upper});
+
+            if (loud_cmd.options.scream) {
+                std.debug.print("HELLOOOOOOOO {s}!!!\n", .{name_upper});
+            } else {
+                std.debug.print("HELLO {s}\n", .{name_upper});
+            }
         },
     }
     return 0;
