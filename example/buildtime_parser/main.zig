@@ -15,6 +15,13 @@ pub fn main() !u8 {
         return 64;
     };
 
+    switch (parser.subcommand) {
+        ._non => return baseCommand(&parser),
+        .hello => return helloCommand(&parser, alloc),
+    }
+}
+
+fn baseCommand(parser: *Zli) u8 {
     // Boolean flags automatically default to false, unless specified otherwise
     if (parser.options.help) {
         // print the auto-generated usage text
@@ -29,12 +36,7 @@ pub fn main() !u8 {
         return 64;
     };
 
-    const name = parser.arguments.name orelse {
-        std.debug.print("{s}", .{parser.help});
-        return 64;
-    };
-
-    std.debug.print("arguments: name '{s}', age {d}\n", .{ name, age });
+    std.debug.print("arguments: age {d}\n", .{age});
 
     std.debug.print("'bool' - typeof: {}, value: {any}\n", .{ @TypeOf(parser.options.bool), parser.options.bool });
     std.debug.print("'str'  - typeof: {}, value: {?s}\n", .{ @TypeOf(parser.options.str), parser.options.str });
@@ -42,5 +44,31 @@ pub fn main() !u8 {
     std.debug.print("'help' - typeof: {}, value: {any}\n", .{ @TypeOf(parser.options.help), parser.options.help });
     std.debug.print("'long_name' - typeof: {}, value: {any}\n", .{ @TypeOf(parser.options.long_name), parser.options.long_name });
 
+    return 0;
+}
+
+fn helloCommand(parser: *Zli, alloc: std.mem.Allocator) u8 {
+    const hello_cmd = parser.subcommand.hello;
+    switch (hello_cmd.subcommand) {
+        ._non => {
+            const name = hello_cmd.arguments.name orelse {
+                std.debug.print("{s}", .{hello_cmd.help});
+                return 64;
+            };
+
+            std.debug.print("Hello {s}\n", .{name});
+        },
+        .loudly => |loud_cmd| {
+            const name = loud_cmd.arguments.name orelse {
+                std.debug.print("{s}", .{loud_cmd.help});
+                return 64;
+            };
+
+            const name_upper = alloc.alloc(u8, name.len) catch return 1;
+            defer alloc.free(name_upper);
+            _ = std.ascii.upperString(name_upper, name);
+            std.debug.print("HELLO {s}\n", .{name_upper});
+        },
+    }
     return 0;
 }
