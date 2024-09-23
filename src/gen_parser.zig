@@ -667,8 +667,6 @@ fn getShortOptionParseFunc(def: anytype, cmd_path: []String, alloc: Allocator) A
 }
 
 fn getSingleShortOptionParseFunc(def: anytype, cmd_path: []String, alloc: Allocator) Allocator.Error!String {
-    // TODO: Add subcommand support
-
     const empty =
         \\
         \\            const option = args[idx][1..];
