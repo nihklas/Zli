@@ -2,5 +2,9 @@
     .name = "zli",
     .version = "0.0.0",
     .dependencies = .{},
-    .paths = .{"."},
+    .paths = .{
+        "build.zig",
+        "README.md",
+        "src",
+    },
 }
