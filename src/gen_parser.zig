@@ -642,6 +642,12 @@ fn getShortOptionParseFunc(def: anytype, cmd_path: []String, alloc: Allocator) A
         );
     }
 
+    try checks.append(
+        \\
+        \\                return Error.UnknownOption;
+        \\
+    );
+
     try checks.insert(0,
         \\
         \\            for (flags) |flag| {
