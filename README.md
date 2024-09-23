@@ -27,6 +27,7 @@ will not make any promises on when or if i get to the issue.
     - Flags: `--flag, -f` for bool values
     - Options: `--value val, --value=val, -v val` for everything else
 - Combined short flags (`-abc`)
+- Subcommands (`command sub1 sub2 argument --option`), This is only available in the build-time parser
 
 # Usage
 
