@@ -256,7 +256,10 @@ fn getArgumentStruct(def: anytype, alloc: Allocator) !String {
 
     inline for (fields_def) |argument_field| {
         const type_def = @field(arguments, argument_field.name).type;
-        try fields.append(compPrint("    {s}: ?{} = null,\n", .{ argument_field.name, type_def }));
+        try fields.append(try allocPrint(alloc, "    {s}: ?{} = null,\n", .{
+            try fieldName(alloc, argument_field.name),
+            type_def,
+        }));
     }
 
     const fields_array = try fields.toOwnedSlice();
@@ -296,15 +299,16 @@ fn getOptionsStruct(def: anytype, alloc: Allocator) !String {
             break :default null;
         };
 
+        const field = try fieldName(alloc, option_field.name);
         if (default) |default_val| {
             const typeinfo = @typeInfo(@TypeOf(default_val));
             if (typeinfo == .pointer and typeinfo.pointer.size == .Slice) {
-                try fields.append(compPrint("    {s}: {} = &.{any},\n", .{ option_field.name, option.type, default_val }));
+                try fields.append(try allocPrint(alloc, "    {s}: {} = &.{any},\n", .{ field, option.type, default_val }));
             } else {
-                try fields.append(compPrint("    {s}: {} = {any},\n", .{ option_field.name, option.type, default_val }));
+                try fields.append(try allocPrint(alloc, "    {s}: {} = {any},\n", .{ field, option.type, default_val }));
             }
         } else {
-            try fields.append(compPrint("    {s}: ?{} = null,\n", .{ option_field.name, option.type }));
+            try fields.append(try allocPrint(alloc, "    {s}: ?{} = null,\n", .{ field, option.type }));
         }
     }
 
@@ -348,7 +352,7 @@ fn getSubcommandsStruct(def: anytype, alloc: Allocator, previous_command_name: S
     inline for (field_defs) |field| {
         const subcommand = @field(subcommands, field.name);
         const full_command = try concat(alloc, u8, &.{ previous_command_name, " ", field.name });
-        try fields.append(compPrint("{s}: struct {{\n", .{field.name}));
+        try fields.append(try allocPrint(alloc, "{s}: struct {{\n", .{try fieldName(alloc, field.name)}));
         try fields.append(try getArgumentStruct(subcommand, alloc));
         try fields.append(try getOptionsStruct(subcommand, alloc));
         try fields.append(try getSubcommandsStruct(subcommand, alloc, full_command));
@@ -420,7 +424,7 @@ fn getArgumentParseFunc(def: anytype, cmd_path: []String, alloc: Allocator) Allo
             if (subcommand_path.len == 0) {
                 break :access ".arguments." ++ field.name;
             }
-            break :access try concat(alloc, u8, &.{ subcommand_path, ".arguments.", field.name });
+            break :access try concat(alloc, u8, &.{ subcommand_path, ".arguments.", try fieldName(alloc, field.name) });
         };
         try checks.append(try allocPrint(alloc,
             \\
@@ -508,12 +512,13 @@ fn getLongOptionParseFunc(def: anytype, cmd_path: []String, alloc: Allocator) Al
     inline for (fields) |field| {
         const option = @field(options, field.name);
         const type_def = option.type;
+        const field_name = try fieldName(alloc, field.name);
 
         const field_access = access: {
             if (subcommand_path.len == 0) {
-                break :access ".options." ++ field.name;
+                break :access try allocPrint(alloc, ".options.{s}", .{field_name});
             }
-            break :access try concat(alloc, u8, &.{ subcommand_path, ".options.", field.name });
+            break :access try concat(alloc, u8, &.{ subcommand_path, ".options.", field_name });
         };
 
         if (type_def == bool) {
@@ -616,14 +621,14 @@ fn getShortOptionParseFunc(def: anytype, cmd_path: []String, alloc: Allocator) A
         if (@hasField(@TypeOf(option), "short")) {
             const short_name = option.short;
             if (type_def == bool) {
-                try checks.append(compPrint(
+                try checks.append(try allocPrint(alloc,
                     \\
                     \\                if (flag == '{c}') {{
                     \\                    self.options.{s} = true;
                     \\                    continue;
                     \\                }}
                     \\
-                , .{ short_name, field.name }));
+                , .{ short_name, try fieldName(alloc, field.name) }));
             }
         }
     }
@@ -719,7 +724,7 @@ fn getSingleShortOptionParseFunc(def: anytype, cmd_path: []String, alloc: Alloca
         if (@hasField(@TypeOf(option), "short")) {
             const short_name = option.short;
             if (type_def != bool) {
-                try checks.append(compPrint(
+                try checks.append(try allocPrint(alloc,
                     \\
                     \\            if (flag == '{c}') {{
                     \\                const value, const ret_idx = blk: {{
@@ -732,7 +737,7 @@ fn getSingleShortOptionParseFunc(def: anytype, cmd_path: []String, alloc: Alloca
                     \\                return ret_idx;
                     \\            }}
                     \\
-                , .{ short_name, field.name, type_def }));
+                , .{ short_name, try fieldName(alloc, field.name), type_def }));
             }
         }
     }
@@ -798,6 +803,7 @@ fn getSubcommandParseFunc(def: anytype, cmd_path: []String, alloc: Allocator) Al
     var if_statements = std.ArrayList(String).init(alloc);
 
     inline for (subcommand_fields) |field| {
+        const field_name = try fieldName(alloc, field.name);
         try if_statements.append(try allocPrint(alloc,
             \\
             \\            if (std.mem.eql(u8, arg, "{s}")) {{
@@ -805,7 +811,7 @@ fn getSubcommandParseFunc(def: anytype, cmd_path: []String, alloc: Allocator) Al
             \\                return true;
             \\            }}   
             \\
-        , .{ field.name, subcommand_path, field.name }));
+        , .{ field.name, subcommand_path, field_name }));
     }
     try if_statements.append(
         \\            return false;
@@ -859,13 +865,14 @@ fn renderFunction(
 
     inline for (subcommand_fields) |field| {
         const sub = @field(def.subcommands, field.name);
+        const field_name = try fieldName(alloc, field.name);
         const path = try concat(alloc, String, &.{ cmd_path, &.{field.name} });
 
         try switch_prongs.append(try allocPrint(alloc, "        .{s} => return self.{s}{s}_{s}({s}),\n", .{
-            field.name,
+            field_name,
             func_name,
             func_suffix,
-            field.name,
+            try functionName(field.name, alloc),
             pass_params,
         }));
 
@@ -897,7 +904,7 @@ fn getFunctionSuffix(cmd_path: []String, alloc: Allocator) !String {
     }
     var acc: String = "";
     for (cmd_path) |cmd| {
-        acc = try concat(alloc, u8, &.{ acc, "_", cmd });
+        acc = try concat(alloc, u8, &.{ acc, "_", try functionName(cmd, alloc) });
     }
 
     return acc;
@@ -909,7 +916,7 @@ fn getSubcommandPath(cmd_path: []String, alloc: Allocator) !String {
     }
     var acc: String = "";
     for (cmd_path) |cmd| {
-        acc = try concat(alloc, u8, &.{ acc, ".subcommand.", cmd });
+        acc = try concat(alloc, u8, &.{ acc, ".subcommand.", try fieldName(alloc, cmd) });
     }
     return acc;
 }
@@ -921,4 +928,34 @@ fn getSubcommandFields(def: anytype) []const std.builtin.Type.StructField {
 
     const subcomands = def.subcommands;
     return std.meta.fields(@TypeOf(subcomands));
+}
+
+fn fieldName(alloc: Allocator, name: []const u8) ![]const u8 {
+    return if (std.zig.isValidId(name)) name else try allocPrint(alloc, "@\"{s}\"", .{name});
+}
+
+fn functionName(name: []const u8, alloc: Allocator) ![]const u8 {
+    if (std.zig.isValidId(name)) {
+        return name;
+    }
+
+    var new_str = try alloc.alloc(u8, name.len);
+    var idx: usize = 0;
+    var next_upper = false;
+    for (name) |char| {
+        if (char == '-') {
+            next_upper = true;
+            continue;
+        }
+
+        if (next_upper) {
+            next_upper = false;
+            new_str[idx] = std.ascii.toUpper(char);
+        } else {
+            new_str[idx] = char;
+        }
+
+        idx += 1;
+    }
+    return new_str[0..idx];
 }

@@ -18,6 +18,10 @@ pub fn main() !u8 {
     switch (parser.subcommand) {
         ._non => return baseCommand(&parser),
         .hello => return helloCommand(&parser, alloc),
+        .@"with-minus" => {
+            std.debug.print("It works!\n", .{});
+            return 0;
+        },
     }
 }
 
@@ -42,7 +46,7 @@ fn baseCommand(parser: *Zli) u8 {
     std.debug.print("'str'  - typeof: {}, value: {?s}\n", .{ @TypeOf(parser.options.str), parser.options.str });
     std.debug.print("'int' - typeof: {}, value: {any}\n", .{ @TypeOf(parser.options.int), parser.options.int });
     std.debug.print("'help' - typeof: {}, value: {any}\n", .{ @TypeOf(parser.options.help), parser.options.help });
-    std.debug.print("'long_name' - typeof: {}, value: {any}\n", .{ @TypeOf(parser.options.long_name), parser.options.long_name });
+    std.debug.print("'long-name' - typeof: {}, value: {any}\n", .{ @TypeOf(parser.options.@"long-name"), parser.options.@"long-name" });
 
     return 0;
 }
