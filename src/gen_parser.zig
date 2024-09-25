@@ -615,20 +615,31 @@ fn getShortOptionParseFunc(def: anytype, cmd_path: []String, alloc: Allocator) A
 
     var checks: std.ArrayList(String) = .init(alloc);
 
+    const subcommand_path = try getSubcommandPath(cmd_path, alloc);
+
     inline for (fields) |field| {
         const option = @field(options, field.name);
         const type_def = option.type;
+        const field_name = try fieldName(alloc, field.name);
+
+        const field_access = access: {
+            if (subcommand_path.len == 0) {
+                break :access try allocPrint(alloc, ".options.{s}", .{field_name});
+            }
+            break :access try concat(alloc, u8, &.{ subcommand_path, ".options.", field_name });
+        };
+
         if (@hasField(@TypeOf(option), "short")) {
             const short_name = option.short;
             if (type_def == bool) {
                 try checks.append(try allocPrint(alloc,
                     \\
                     \\                if (flag == '{c}') {{
-                    \\                    self.options.{s} = true;
+                    \\                    self{s} = true;
                     \\                    continue;
                     \\                }}
                     \\
-                , .{ short_name, try fieldName(alloc, field.name) }));
+                , .{ short_name, field_access }));
             }
         }
     }
