@@ -112,7 +112,7 @@ pub fn generateParser(def: anytype) !void {
         \\    self.extra_args = try extra_args.toOwnedSlice();
         \\}
         \\
-        \\pub fn convertValue(target: type, value: []const u8) Error!target {
+        \\pub fn convertValue(target: type, value: [:0]const u8) Error!target {
         \\    return switch (@typeInfo(target)) {
         \\        .int => std.fmt.parseInt(target, value, 0) catch return Error.TypeError,
         \\        .float => std.fmt.parseFloat(target, value) catch return Error.TypeError,
