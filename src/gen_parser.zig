@@ -729,9 +729,19 @@ fn getSingleShortOptionParseFunc(def: anytype, cmd_path: []String, alloc: Alloca
 
     var checks: std.ArrayList(String) = .init(alloc);
 
+    const subcommand_path = try getSubcommandPath(cmd_path, alloc);
+
     inline for (fields) |field| {
         const option = @field(options, field.name);
         const type_def = option.type;
+        const field_name = try fieldName(alloc, field.name);
+
+        const field_access = access: {
+            if (subcommand_path.len == 0) {
+                break :access try allocPrint(alloc, ".options.{s}", .{field_name});
+            }
+            break :access try concat(alloc, u8, &.{ subcommand_path, ".options.", field_name });
+        };
         if (@hasField(@TypeOf(option), "short")) {
             const short_name = option.short;
             if (type_def != bool) {
@@ -744,11 +754,11 @@ fn getSingleShortOptionParseFunc(def: anytype, cmd_path: []String, alloc: Alloca
                     \\                    }}
                     \\                    return Error.MissingValue;
                     \\                }};
-                    \\                self.options.{s} = try convertValue({}, value);
+                    \\                self{s} = try convertValue({}, value);
                     \\                return ret_idx;
                     \\            }}
                     \\
-                , .{ short_name, try fieldName(alloc, field.name), type_def }));
+                , .{ short_name, field_access, type_def }));
             }
         }
     }
