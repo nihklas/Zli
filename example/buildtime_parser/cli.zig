@@ -1,7 +1,18 @@
 const zli = @import("zli");
 
+const SortOptions = enum {
+    Alpha,
+    Size,
+    Random,
+};
+
 pub fn main() !void {
     try zli.generateParser(.{
+        .description =
+        \\This Command acts as an example on how to use the Zli library
+        \\for command line parsing. Take a look at the files in ./example 
+        \\to see how this example works.
+        ,
         .options = .{
             .bool = .{ .type = bool, .short = 'b', .desc = "Just some random flag" },
             .str = .{
@@ -11,6 +22,7 @@ pub fn main() !void {
                 .default = "hallo",
             },
             .int = .{ .type = i32, .short = 'i', .desc = "If you have a number, put it here", .default = 0, .value_hint = "INT" },
+            .sort = .{ .type = SortOptions, .short = 's', .desc = "How to sort, example for using enums", .default = .Alpha },
             .help = .{ .type = bool, .short = 'h', .desc = "Print this help text" },
             .@"long-name" = .{ .type = f32, .desc = "A long option-name, just to pass a float", .value_hint = "FLOAT" },
         },

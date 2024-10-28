@@ -47,6 +47,7 @@ pub fn generateParser(def: anytype) !void {
         \\    TypeError,
         \\    UnknownOption,
         \\    MissingValue,
+        \\    UnsupportedEnumValue,
         \\};
         \\
         \\extra_args: [][]const u8 = &.{},
@@ -118,6 +119,14 @@ pub fn generateParser(def: anytype) !void {
         \\        .float => std.fmt.parseFloat(target, value) catch return Error.TypeError,
         \\        .bool => !std.mem.eql(u8, value, "false") and value.len > 0,
         \\        .pointer => value,
+        \\        .@"enum" => {
+        \\            for (std.enums.values(target)) |tag| {
+        \\                if (std.mem.eql(u8, @tagName(tag), value)) {
+        \\                    return tag;
+        \\                }
+        \\            }
+        \\            return error.UnsupportedEnumValue;
+        \\        },
         \\        else => unreachable,
         \\    };
         \\}
@@ -162,11 +171,32 @@ fn getHelpText(def: anytype, alloc: Allocator, program_name: String) !String {
         try text.append(" [OPTIONS]");
     }
 
-    if (sorted_arguments.len > 0) {
-        inline for (sorted_arguments) |arg| {
-            try text.append(compPrint(" <{s}>", .{arg}));
-        }
+    inline for (sorted_arguments) |arg| {
+        try text.append(compPrint(" <{s}>", .{arg}));
+    }
 
+    if (@hasField(def_type, "description")) {
+        try text.append("\n");
+        try text.append("\\\\\n");
+        var line_buf: [def.description.len]u8 = undefined;
+        var line_len: usize = 0;
+        for (def.description) |char| {
+            if (char == '\n') {
+                try text.append("\\\\");
+                try text.append(try alloc.dupe(u8, line_buf[0..line_len]));
+                try text.append("\n");
+                line_len = 0;
+                continue;
+            }
+            line_buf[line_len] = char;
+            line_len += 1;
+        }
+        try text.append("\\\\");
+        try text.append(try alloc.dupe(u8, line_buf[0..line_len]));
+        try text.append("\n");
+    }
+
+    if (sorted_arguments.len > 0) {
         try text.append("\n");
         try text.append("\\\\\n");
         try text.append("\\\\ARGUMENTS:");
@@ -198,23 +228,33 @@ fn getHelpText(def: anytype, alloc: Allocator, program_name: String) !String {
             try text.append("\n");
             try text.append("\\\\    ");
             const option_def = @field(def.options, option.name);
+            const option_type = @TypeOf(option_def);
             const option_names = blk: {
-                if (@hasField(@TypeOf(option_def), "short")) {
+                if (@hasField(option_type, "short")) {
                     break :blk compPrint("-{c}, --{s}", .{ option_def.short, option.name });
                 }
 
                 break :blk compPrint("--{s}", .{option.name});
             };
             const option_hint = blk: {
-                if (@hasField(@TypeOf(option_def), "value_hint")) {
+                if (@hasField(option_type, "value_hint")) {
                     break :blk compPrint("{s}={s}", .{ option_names, option_def.value_hint });
                 }
 
                 break :blk option_names;
             };
             try text.append(compPrint("{s: <30}", .{option_hint}));
-            if (@hasField(@TypeOf(option_def), "desc")) {
+            if (@hasField(option_type, "desc")) {
                 try text.append(option_def.desc);
+
+                if (@typeInfo(option_def.type) == .@"enum") {
+                    try text.append("\n\\\\                                    The following values are valid:\n");
+                    for (std.enums.values(option_def.type)) |tag| {
+                        try text.append("\\\\                                      ");
+                        try text.append(@tagName(tag));
+                        try text.append("\n");
+                    }
+                }
             }
         }
     }
@@ -304,6 +344,10 @@ fn getOptionsStruct(def: anytype, alloc: Allocator) !String {
             const typeinfo = @typeInfo(@TypeOf(default_val));
             if (typeinfo == .pointer and typeinfo.pointer.size == .Slice) {
                 try fields.append(try allocPrint(alloc, "    {s}: {} = &.{any},\n", .{ field, option.type, default_val }));
+            } else if (typeinfo == .@"enum") {
+                const enum_value = try fieldName(alloc, @tagName(default_val));
+                const enum_type = try buildAnonymousEnum(alloc, option.type);
+                try fields.append(try allocPrint(alloc, "    {s}: {s} = .{s},\n", .{ field, enum_type, enum_value }));
             } else {
                 try fields.append(try allocPrint(alloc, "    {s}: {} = {any},\n", .{ field, option.type, default_val }));
             }
@@ -511,7 +555,6 @@ fn getLongOptionParseFunc(def: anytype, cmd_path: []String, alloc: Allocator) Al
     const subcommand_path = try getSubcommandPath(cmd_path, alloc);
     inline for (fields) |field| {
         const option = @field(options, field.name);
-        const type_def = option.type;
         const field_name = try fieldName(alloc, field.name);
 
         const field_access = access: {
@@ -521,7 +564,7 @@ fn getLongOptionParseFunc(def: anytype, cmd_path: []String, alloc: Allocator) Al
             break :access try concat(alloc, u8, &.{ subcommand_path, ".options.", field_name });
         };
 
-        if (type_def == bool) {
+        if (option.type == bool) {
             try checks.append(try allocPrint(alloc,
                 \\
                 \\            if (std.mem.eql(u8, option_name, "{s}")) {{
@@ -545,11 +588,11 @@ fn getLongOptionParseFunc(def: anytype, cmd_path: []String, alloc: Allocator) Al
                 \\                    return Error.MissingValue;
                 \\                }};
                 \\
-                \\                self{s} = try convertValue({}, value);
+                \\                self{s} = try convertValue(@TypeOf(self{s}), value);
                 \\                return ret_idx;
                 \\            }}
                 \\
-            , .{ field.name, field_access, type_def }));
+            , .{ field.name, field_access, field_access }));
         }
     }
     try checks.append(
@@ -733,7 +776,6 @@ fn getSingleShortOptionParseFunc(def: anytype, cmd_path: []String, alloc: Alloca
 
     inline for (fields) |field| {
         const option = @field(options, field.name);
-        const type_def = option.type;
         const field_name = try fieldName(alloc, field.name);
 
         const field_access = access: {
@@ -744,7 +786,7 @@ fn getSingleShortOptionParseFunc(def: anytype, cmd_path: []String, alloc: Alloca
         };
         if (@hasField(@TypeOf(option), "short")) {
             const short_name = option.short;
-            if (type_def != bool) {
+            if (option.type != bool) {
                 try checks.append(try allocPrint(alloc,
                     \\
                     \\            if (flag == '{c}') {{
@@ -754,11 +796,11 @@ fn getSingleShortOptionParseFunc(def: anytype, cmd_path: []String, alloc: Alloca
                     \\                    }}
                     \\                    return Error.MissingValue;
                     \\                }};
-                    \\                self{s} = try convertValue({}, value);
+                    \\                self{s} = try convertValue(@TypeOf(self{s}), value);
                     \\                return ret_idx;
                     \\            }}
                     \\
-                , .{ short_name, field_access, type_def }));
+                , .{ short_name, field_access, field_access }));
             }
         }
     }
@@ -979,4 +1021,32 @@ fn functionName(name: []const u8, alloc: Allocator) ![]const u8 {
         idx += 1;
     }
     return new_str[0..idx];
+}
+
+fn buildAnonymousEnum(alloc: Allocator, source_type: type) ![]const u8 {
+    const info = @typeInfo(source_type);
+    std.debug.assert(info == .@"enum");
+
+    const enum_info = info.@"enum";
+    if (enum_info.decls.len > 0) {
+        @panic("Enum type should not contain decls");
+    }
+
+    if (!enum_info.is_exhaustive) {
+        @panic("Enum type should be exhaustive");
+    }
+
+    var parts: std.ArrayList([]const u8) = .init(alloc);
+
+    try parts.append(compPrint("enum({}) {{\n", .{enum_info.tag_type}));
+    inline for (enum_info.fields) |field| {
+        if (std.zig.isValidId(field.name)) {
+            try parts.append(compPrint("    {s} = {d},\n", .{ field.name, field.value }));
+        } else {
+            try parts.append(compPrint("    @\"{s}\" = {d}\n", .{ field.name, field.value }));
+        }
+    }
+    try parts.append("}");
+
+    return try std.mem.concat(alloc, u8, try parts.toOwnedSlice());
 }
