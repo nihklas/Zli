@@ -6,7 +6,7 @@ pub fn build(b: *std.Build) void {
 
     const zli_module = b.addModule("zli", .{
         .root_source_file = b.path("src/zli.zig"),
-        .target = b.host,
+        .target = b.resolveTargetQuery(.{}),
     });
 
     const exe_buildtime = b.addExecutable(.{
@@ -37,7 +37,7 @@ pub fn buildParser(b: *std.Build, zli_module: *std.Build.Module, program: *std.B
     const generate_parser = b.addExecutable(.{
         .name = "generate_parser",
         .root_source_file = b.path(parser_file),
-        .target = b.host,
+        .target = b.resolveTargetQuery(.{}),
     });
 
     const config = b.addOptions();
