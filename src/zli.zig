@@ -365,14 +365,14 @@ fn isAllowedType(check: std.builtin.Type) bool {
 }
 
 fn isString(check: std.builtin.Type) bool {
-    return check == .pointer and check.pointer.size == .Slice and check.pointer.child == u8 and check.pointer.is_const;
+    return check == .pointer and check.pointer.size == .slice and check.pointer.child == u8 and check.pointer.is_const;
 }
 
 fn makeField(name: [:0]const u8, field_type: type, default: field_type) std.builtin.Type.StructField {
     return .{
         .name = name,
         .type = field_type,
-        .default_value = &@as(field_type, default),
+        .default_value_ptr = &@as(field_type, default),
         .is_comptime = false,
         .alignment = @alignOf(field_type),
     };

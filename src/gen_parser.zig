@@ -342,7 +342,7 @@ fn getOptionsStruct(def: anytype, alloc: Allocator) !String {
         const field = try fieldName(alloc, option_field.name);
         if (default) |default_val| {
             const typeinfo = @typeInfo(@TypeOf(default_val));
-            if (typeinfo == .pointer and typeinfo.pointer.size == .Slice) {
+            if (typeinfo == .pointer and typeinfo.pointer.size == .slice) {
                 try fields.append(try allocPrint(alloc, "    {s}: {} = &.{any},\n", .{ field, option.type, default_val }));
             } else if (typeinfo == .@"enum") {
                 const enum_value = try fieldName(alloc, @tagName(default_val));
