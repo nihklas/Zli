@@ -1,6 +1,7 @@
 .{
-    .name = "zli",
-    .version = "0.0.0",
+    .name = .zli,
+    .fingerprint = 0x5b01c9c3d7567d5d,
+    .version = "0.1.0",
     .dependencies = .{},
     .paths = .{
         "build.zig.zon",
